@@ -196,10 +196,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
                 setPhase(InstallPhase.Exploiting, app.getString(R.string.status_exploit_running))
                 executeExploit(payloads.exploit, payloads.profile.requiresFreshP0Session)
-<<<<<<< HEAD
                 hardenKeeper()
-=======
->>>>>>> 40a9d9c (Fix exploit-run stall detection and fresh-P0 cache poisoning)
 
                 setPhase(InstallPhase.LoadingKernelSu, app.getString(R.string.status_ksu_loading))
                 installKernelSu(payloads)
@@ -635,12 +632,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_STALL_MILLIS = 90_000L
         private const val EXPLOIT_TOTAL_MILLIS = 900_000L
         private const val MAX_EARLY_OUTPUT_BYTES = 64 * 1024
-<<<<<<< HEAD
         private val KEEPER_COMMS = setOf("cve43499-hold", "cve43499-p0ref")
         private const val KEEPER_CGROUP = "/sys/fs/cgroup/rmg-hold"
         private const val KEEPER_CGROUP_NAME = "rmg-hold"
-=======
->>>>>>> 40a9d9c (Fix exploit-run stall detection and fresh-P0 cache poisoning)
         private const val INSTALL_RECEIPT = "install_receipt"
         private const val RECEIPT_BOOT_TOKEN = "kernel_boot_id"
         private const val RECEIPT_VERIFIED = "verified"
