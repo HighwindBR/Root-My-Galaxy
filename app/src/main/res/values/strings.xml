@@ -145,6 +145,10 @@
     <string name="error_shizuku_stage">Unable to stage %1$s through Shizuku: %2$s</string>
     <string name="log_shizuku_prepare">[*] Preparing Shizuku execution</string>
     <string name="log_shizuku_permission">[+] Shizuku permission granted</string>
+    <string name="feed_url">Feed server</string>
+    <string name="feed_url_description">Base URL used to fetch the payload manifest and artifacts</string>
+    <string name="feed_url_hint">http://127.0.0.1:8080</string>
+    <string name="action_save">Save</string>
     <string name="repo_profile_missing">Support profile %1$s is no longer available</string>
     <string name="select_device_title">Choose a payload</string>
     <string name="select_device_description">Select a payload by device model and kernel version.</string>

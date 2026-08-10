@@ -105,6 +105,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -1420,6 +1421,8 @@ private fun SettingsPage(
     var showColorDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showShizukuMissingDialog by remember { mutableStateOf(false) }
+    var showFeedUrlDialog by remember { mutableStateOf(false) }
+    var feedUrl by remember { mutableStateOf(AppPreferences.feedBaseUrl(context)) }
     var languageMenuTop by remember { mutableStateOf(32.dp) }
     var colorMenuTop by remember { mutableStateOf(32.dp) }
     val density = LocalDensity.current
@@ -1448,6 +1451,34 @@ private fun SettingsPage(
                     clickHaptic(view)
                     showShizukuMissingDialog = false
                 }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    if (showFeedUrlDialog) {
+        var text by remember { mutableStateOf(feedUrl) }
+        AlertDialog(
+            onDismissRequest = { showFeedUrlDialog = false },
+            title = { Text(stringResource(R.string.feed_url)) },
+            text = {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.feed_url_hint)) },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    AppPreferences.setFeedBaseUrl(context, text)
+                    feedUrl = AppPreferences.feedBaseUrl(context)
+                    showFeedUrlDialog = false
+                }) { Text(stringResource(R.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFeedUrlDialog = false }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },
@@ -1563,16 +1594,30 @@ private fun SettingsPage(
         }
         item { SectionLabel(stringResource(R.string.advanced)) }
         item {
-            SettingsSwitchCard(
-                icon = Icons.Rounded.Memory,
-                title = stringResource(R.string.advanced_mode),
-                description = stringResource(R.string.advanced_mode_description),
-                checked = advancedMode,
-                onCheckedChange = {
-                    clickHaptic(view)
-                    onAdvancedModeChanged(it)
-                },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SettingsCard(
+                    icon = Icons.Rounded.Link,
+                    title = stringResource(R.string.feed_url),
+                    description = stringResource(R.string.feed_url_description),
+                    value = feedUrl,
+                    position = SettingsCardPosition.Top,
+                    onClick = {
+                        clickHaptic(view)
+                        showFeedUrlDialog = true
+                    },
+                )
+                SettingsSwitchCard(
+                    icon = Icons.Rounded.Memory,
+                    title = stringResource(R.string.advanced_mode),
+                    description = stringResource(R.string.advanced_mode_description),
+                    checked = advancedMode,
+                    position = SettingsCardPosition.Bottom,
+                    onCheckedChange = {
+                        clickHaptic(view)
+                        onAdvancedModeChanged(it)
+                    },
+                )
+            }
         }
         item { SectionLabel(stringResource(R.string.about)) }
         item {

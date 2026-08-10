@@ -91,7 +91,7 @@ class PayloadRepository(private val context: Context) {
     }
 
     private fun resolveMainCommit(): String {
-        val response = downloadBytes(COMMIT_API_URL, MAX_COMMIT_RESPONSE_BYTES)
+        val response = downloadBytes(commitApiUrl(), MAX_COMMIT_RESPONSE_BYTES)
         val commit = JSONObject(response.toString(Charsets.UTF_8))
             .getJSONObject("object")
             .getString("sha")
@@ -99,11 +99,17 @@ class PayloadRepository(private val context: Context) {
         return commit
     }
 
-    private fun rawUrl(commit: String, path: String) = "$RAW_REPOSITORY/$commit/$path"
+    private fun baseUrl(): String = AppPreferences.feedBaseUrl(context)
+
+    private fun commitApiUrl(): String = "${baseUrl()}/git/ref/heads/main"
+
+    private fun rawUrl(commit: String, path: String) = "${baseUrl()}/$commit/$path"
 
     private fun pinArtifactUrl(url: String, commit: String): String {
-        require(url.startsWith(MUTABLE_RAW_PREFIX)) { context.getString(R.string.repo_url_invalid) }
-        return "$RAW_REPOSITORY/$commit/${url.removePrefix(MUTABLE_RAW_PREFIX)}"
+        val marker = "/main/"
+        val index = url.indexOf(marker)
+        require(index >= 0) { context.getString(R.string.repo_url_invalid) }
+        return "${baseUrl()}/$commit/${url.substring(index + marker.length)}"
     }
 
     private fun downloadBytes(url: String, maximum: Int): ByteArray {
@@ -136,11 +142,6 @@ class PayloadRepository(private val context: Context) {
         }
 
     companion object {
-        private const val COMMIT_API_URL =
-            "https://api.github.com/repos/BuSung-dev/Root-My-Galaxy-Payloads/git/ref/heads/main"
-        private const val RAW_REPOSITORY =
-            "https://raw.githubusercontent.com/BuSung-dev/Root-My-Galaxy-Payloads"
-        private const val MUTABLE_RAW_PREFIX = "$RAW_REPOSITORY/main/"
         private const val MAX_COMMIT_RESPONSE_BYTES = 16 * 1024
         private const val MAX_MANIFEST_BYTES = 256 * 1024
     }

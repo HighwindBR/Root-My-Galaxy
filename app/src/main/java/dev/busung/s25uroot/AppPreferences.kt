@@ -35,6 +35,8 @@ object AppPreferences {
     private const val ADVANCED_MODE = "advanced_mode"
     private const val SHIZUKU_MODE = "shizuku_mode"
     private const val CONSUMED_INSTALL_REQUEST = "consumed_install_request"
+    private const val FEED_BASE_URL = "feed_base_url"
+    const val DEFAULT_FEED_BASE_URL = "http://127.0.0.1:8080"
 
     fun accentColor(context: Context): AccentColor = AccentColor.fromStoredValue(
         prefs(context).getString(ACCENT_COLOR, null),
@@ -71,6 +73,17 @@ object AppPreferences {
     fun setShizukuMode(context: Context, enabled: Boolean) {
         prefs(context).edit()
             .putBoolean(SHIZUKU_MODE, enabled)
+            .apply()
+    }
+
+    fun feedBaseUrl(context: Context): String =
+        prefs(context).getString(FEED_BASE_URL, null)
+            ?.trim()?.removeSuffix("/")?.takeIf { it.isNotEmpty() }
+            ?: DEFAULT_FEED_BASE_URL
+
+    fun setFeedBaseUrl(context: Context, url: String) {
+        prefs(context).edit()
+            .putString(FEED_BASE_URL, url.trim().removeSuffix("/"))
             .apply()
     }
 
