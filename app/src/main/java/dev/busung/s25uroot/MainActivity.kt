@@ -299,6 +299,18 @@ private fun RootApp(
     val scope = rememberCoroutineScope()
     var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
     var updateCardDismissed by remember { mutableStateOf(false) }
+    // xrzcc fork: local manual payload + ksud selection (offline install, no feed).
+    var pendingPayloadUri by remember { mutableStateOf<Uri?>(null) }
+    val pickPayload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) pendingPayloadUri = uri
+    }
+    val pickKsud = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val payload = pendingPayloadUri
+        if (uri != null && payload != null) {
+            installViewModel.installFromLocal(payload, uri)
+            pendingPayloadUri = null
+        }
+    }
     val checkForUpdate: () -> Unit = {
         if (!updateStatus.busy) {
             updateStatus = UpdateStatus.Checking
@@ -490,6 +502,10 @@ private fun RootApp(
                             showInstallConfirmation = true
                         }
                     },
+                    onPickPayload = { pickPayload.launch(arrayOf("*/*")) },
+                    onPickKsudAndInstall = { pickKsud.launch(arrayOf("*/*")) },
+                    payloadSelected = pendingPayloadUri != null,
+                    onCheckSu = { installViewModel.checkSuStatus() },
                 )
                 AppPage.History -> HistoryPage(
                     padding,
@@ -557,6 +573,10 @@ private fun OverviewPage(
     onDismissUpdateCard: () -> Unit,
     onStartDownload: (UpdateInfo) -> Unit,
     onInstall: () -> Unit,
+    onPickPayload: () -> Unit,
+    onPickKsudAndInstall: () -> Unit,
+    payloadSelected: Boolean,
+    onCheckSu: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -600,6 +620,8 @@ private fun OverviewPage(
             }
         }
         item { InstallStatusCard(installState, onInstall) }
+        item { ManualPayloadCard(onPickPayload, onPickKsudAndInstall, payloadSelected) }
+        item { SuStatusCard(onCheckSu, installState) }
         item { DeviceCard(device) }
         item { HowItWorksCard() }
     }
@@ -841,6 +863,94 @@ private fun InstallStatusCard(installState: InstallUiState, onInstall: () -> Uni
                     maxLines = 1,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ManualPayloadCard(
+    onPickPayload: () -> Unit,
+    onPickKsudAndInstall: () -> Unit,
+    payloadSelected: Boolean,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "手动选择 Payload + KernelSU（离线，不联网）",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "先选 cve-2026-43499-app.so，再选 ksud 二进制（如 ksud-m1q-...-kdp）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "1. 选择 payload .so",
+                    modifier = Modifier
+                        .clickable { onPickPayload() }
+                        .padding(vertical = 8.dp, horizontal = 12.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = if (payloadSelected) "2. 选择 ksud 并安装" else "2. 先完成上一步",
+                    modifier = Modifier
+                        .clickable(enabled = payloadSelected) { onPickKsudAndInstall() }
+                        .padding(vertical = 8.dp, horizontal = 12.dp),
+                    color = if (payloadSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuStatusCard(onCheckSu: () -> Unit, installState: InstallUiState) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "检查当前 SU 状态",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (installState.probeOutput.isNotBlank()) {
+                Text(
+                    text = installState.probeOutput,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = "检查 KernelSU 状态",
+                modifier = Modifier
+                    .clickable { onCheckSu() }
+                    .padding(vertical = 8.dp, horizontal = 12.dp),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
     }
 }
