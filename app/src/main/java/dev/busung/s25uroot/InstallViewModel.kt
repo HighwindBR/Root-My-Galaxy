@@ -211,24 +211,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // xrzcc fork: probe and display current KernelSU / root status on demand.
-    fun checkSuStatus() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val probe = NativeProbe.run()
-            val ksuActive = NativeProbe.isKernelSuActive()
-            val report = buildString {
-                appendLine(probe)
-                appendLine("KernelSU active: $ksuActive")
-            }
-            mutableState.value = mutableState.value.copy(
-                phase = if (ksuActive) InstallPhase.Installed else mutableState.value.phase,
-                message = if (ksuActive) app.getString(R.string.status_ksu_active) else "KernelSU not active",
-                probeOutput = report,
-                log = report,
-            )
-        }
-    }
-
     private fun copyUriToFile(uri: android.net.Uri, destination: java.io.File): java.io.File {
         destination.parentFile?.mkdirs()
         app.contentResolver.openInputStream(uri)?.use { input ->

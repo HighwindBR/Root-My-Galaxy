@@ -505,7 +505,6 @@ private fun RootApp(
                     onPickPayload = { pickPayload.launch(arrayOf("*/*")) },
                     onPickKsudAndInstall = { pickKsud.launch(arrayOf("*/*")) },
                     payloadSelected = pendingPayloadUri != null,
-                    onCheckSu = { installViewModel.checkSuStatus() },
                 )
                 AppPage.History -> HistoryPage(
                     padding,
@@ -576,7 +575,6 @@ private fun OverviewPage(
     onPickPayload: () -> Unit,
     onPickKsudAndInstall: () -> Unit,
     payloadSelected: Boolean,
-    onCheckSu: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -621,7 +619,6 @@ private fun OverviewPage(
         }
         item { InstallStatusCard(installState, onInstall) }
         item { ManualPayloadCard(onPickPayload, onPickKsudAndInstall, payloadSelected) }
-        item { SuStatusCard(onCheckSu, installState) }
         item { DeviceCard(device) }
         item { HowItWorksCard() }
     }
@@ -915,42 +912,6 @@ private fun ManualPayloadCard(
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun SuStatusCard(onCheckSu: () -> Unit, installState: InstallUiState) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "检查当前 SU 状态",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            if (installState.probeOutput.isNotBlank()) {
-                Text(
-                    text = installState.probeOutput,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                text = "检查 KernelSU 状态",
-                modifier = Modifier
-                    .clickable { onCheckSu() }
-                    .padding(vertical = 8.dp, horizontal = 12.dp),
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.labelLarge,
-            )
         }
     }
 }
