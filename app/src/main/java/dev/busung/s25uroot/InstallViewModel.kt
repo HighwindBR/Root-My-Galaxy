@@ -179,6 +179,88 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // xrzcc fork: install from user-selected local payload + ksud (offline, no feed download).
+    fun installFromLocal(exploitUri: android.net.Uri, ksudUri: android.net.Uri) {
+        if (installJob?.isActive == true) return
+        discoveryJob?.cancel()
+        installJob = viewModelScope.launch(Dispatchers.IO) {
+            mutableState.value = InstallUiState(
+                phase = InstallPhase.Checking,
+                probeOutput = mutableState.value.probeOutput,
+            )
+            startHistory()
+            try {
+                val dir = java.io.File(app.filesDir, "payloads/local-manual").apply { mkdirs() }
+                val exploit = copyUriToFile(exploitUri, java.io.File(dir, "cve-2026-43499-app.so"))
+                val ksud = copyUriToFile(ksudUri, java.io.File(dir, "ksud"))
+                android.system.Os.chmod(exploit.absolutePath, 0b100100100)
+                android.system.Os.chmod(ksud.absolutePath, 0b100100100)
+                updateHistoryProfile("local-manual")
+                setPhase(InstallPhase.Exploiting, app.getString(R.string.status_exploit_running))
+                executeExploit(exploit)
+                setPhase(InstallPhase.LoadingKernelSu, app.getString(R.string.status_ksu_loading))
+                installKernelSuFromFile(ksud)
+                setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
+                appendLog(app.getString(R.string.log_install_complete))
+                finishHistory(InstallRunResult.Succeeded)
+            } catch (error: Throwable) {
+                appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
+                setPhase(InstallPhase.Failed, app.getString(R.string.status_install_failed))
+                finishHistory(InstallRunResult.Failed)
+            }
+        }
+    }
+
+    // xrzcc fork: probe and display current KernelSU / root status on demand.
+    fun checkSuStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val probe = NativeProbe.run()
+            val ksuActive = NativeProbe.isKernelSuActive()
+            val report = buildString {
+                appendLine(probe)
+                appendLine("KernelSU active: $ksuActive")
+            }
+            mutableState.value = mutableState.value.copy(
+                phase = if (ksuActive) InstallPhase.Installed else mutableState.value.phase,
+                message = if (ksuActive) app.getString(R.string.status_ksu_active) else "KernelSU not active",
+                probeOutput = report,
+                log = report,
+            )
+        }
+    }
+
+    private fun copyUriToFile(uri: android.net.Uri, destination: java.io.File): java.io.File {
+        destination.parentFile?.mkdirs()
+        app.contentResolver.openInputStream(uri)?.use { input ->
+            java.io.FileOutputStream(destination).use { output -> input.copyTo(output) }
+        } ?: error("Cannot open content URI: $uri")
+        return destination
+    }
+
+    private fun installKernelSuFromFile(ksudFile: java.io.File) {
+        if (shizukuEnabled()) {
+            shizukuStage(ksudFile, SHIZUKU_KSUD_PATH, "755")
+            shizukuStage(ksudFile, SHIZUKU_KSUD_STAGE_PATH, "755")
+            appendLog(app.getString(R.string.log_ksu_staged))
+        } else {
+            val source = shellQuote(ksudFile.absolutePath)
+            val stageCommand =
+                "/system/bin/cp $source /data/local/tmp/ksud-s25u-kdp && " +
+                    "/system/bin/cp $source /data/local/tmp/.ksud-stage && " +
+                    "/system/bin/chmod 755 /data/local/tmp/ksud-s25u-kdp /data/local/tmp/.ksud-stage"
+            val stage = runHelper("-c", stageCommand)
+            require(stage.code == 0) { app.getString(R.string.error_ksu_stage, stage.output) }
+            appendLog(app.getString(R.string.log_ksu_staged))
+        }
+        val lateLoad = runHelper("--late-load")
+        require(lateLoad.code == 0) {
+            app.getString(R.string.error_ksu_verify, lateLoad.code, lateLoad.output)
+        }
+        if (lateLoad.output.isNotBlank()) appendLog(lateLoad.output)
+        storeInstallReceipt()
+        appendLog(app.getString(R.string.log_ksu_control_verified))
+    }
+
     private suspend fun executeExploit(payload: File) {
         val shizuku = shizukuEnabled()
         val logFile = if (shizuku) File(SHIZUKU_LOG_PATH) else File(app.filesDir, "exploit.log")

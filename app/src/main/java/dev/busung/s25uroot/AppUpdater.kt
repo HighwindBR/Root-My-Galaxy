@@ -26,41 +26,8 @@ object AppUpdater {
     private const val RELEASES_PAGE = "$ROOT_MY_GALAXY_URL/releases/latest"
 
     suspend fun fetchLatestRelease(): UpdateInfo? = withContext(Dispatchers.IO) {
-        try {
-            val connection = URL("$GITHUB_API/releases/latest").openConnection() as HttpURLConnection
-            try {
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", "RootMyGalaxy/${BuildConfig.VERSION_NAME}")
-                connection.setRequestProperty("Accept", "application/vnd.github+json")
-                connection.connectTimeout = 10_000
-                connection.readTimeout = 10_000
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-
-                val json = JSONObject(body)
-                val tag = json.optString("tag_name").trim().removePrefix("v")
-                if (tag.isBlank()) return@withContext null
-                var apkUrl: String? = null
-                json.optJSONArray("assets")?.let { assets ->
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
-                        if (asset.optString("name").endsWith(".apk")) {
-                            apkUrl = asset.optString("browser_download_url").ifEmpty { null }
-                            break
-                        }
-                    }
-                }
-                UpdateInfo(
-                    versionName = tag,
-                    apkUrl = apkUrl,
-                    releaseUrl = json.optString("html_url").ifEmpty { RELEASES_PAGE },
-                )
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            null
-        }
+        // xrzcc fork: update checks disabled (offline-first). Always report "no update".
+        null
     }
 
     fun isUpdateAvailable(latestVersion: String, currentVersion: String): Boolean =
