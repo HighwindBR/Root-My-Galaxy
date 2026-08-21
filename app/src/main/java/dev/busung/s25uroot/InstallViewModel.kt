@@ -1,8 +1,6 @@
 package dev.busung.s25uroot
 
 import android.app.Application
-import android.net.Uri
-import android.os.Build
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,25 +8,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
-import java.security.MessageDigest
-import kotlin.math.roundToInt
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
-
-// ---------------------------------------------------------------------------
-// Phase enum
-// ---------------------------------------------------------------------------
 
 enum class InstallPhase {
     Checking,
@@ -37,31 +23,14 @@ enum class InstallPhase {
     Exploiting,
     LoadingKernelSu,
     Installed,
-    Done,
     Failed,
-    Running,
 }
-
-private enum class PayloadSource { Remote, Local }
-
-// ---------------------------------------------------------------------------
-// UI state
-// ---------------------------------------------------------------------------
 
 data class InstallUiState(
     val phase: InstallPhase = InstallPhase.Checking,
-    val statusMessage: String = "",
-    val progress: Float? = null,
-    val progressLabel: String? = null,
+    val message: String = "",
     val probeOutput: String = "",
     val log: String = "",
-    val device: DeviceSnapshot? = null,
-    val isRooted: Boolean = false,
-    val kernelSuVersion: String? = null,
-    val androidVersion: String? = null,
-    val securityPatch: String? = null,
-    val selectedProfile: TargetProfile? = null,
-    val pendingInstallRequest: String? = null,
 ) {
     val busy: Boolean
         get() = phase in setOf(
@@ -69,10 +38,8 @@ data class InstallUiState(
             InstallPhase.Downloading,
             InstallPhase.Exploiting,
             InstallPhase.LoadingKernelSu,
-            InstallPhase.Running,
         )
 
-    val message: String get() = statusMessage
 }
 
 data class TargetCatalogUiState(
@@ -83,252 +50,95 @@ data class TargetCatalogUiState(
 
 private data class CommandResult(val code: Int, val output: String)
 
-internal fun stagedFileIsCurrent(staged: File, source: File): Boolean {
-    if (!staged.exists()) return false
-    val stagedDigest = sha256OrNull(staged) ?: return false
-    return stagedDigest == sha256OrNull(source)
-}
-
-private fun sha256OrNull(file: File): String? = runCatching {
-    file.inputStream().use { input ->
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(8192)
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            digest.update(buffer, 0, count)
-        }
-        digest.digest().joinToString("") { "%02x".format(it) }
-    }
-}.getOrNull()
-
-// ---------------------------------------------------------------------------
-// Progress layout
-// ---------------------------------------------------------------------------
-//
-// The overall install is divided into weighted segments so the single
-// progress bar moves smoothly from 0 % to 100 % across all phases:
-//
-//   0 – 5 %    Checking / Shizuku pre-flight
-//   5 – 50 %   Downloading exploit  (file download mapped 0–1 → 5–50 %)
-//  50 – 85 %   Downloading KernelSU (file download mapped 0–1 → 50–85 %)
-//  85 – 95 %   Exploiting           (indeterminate pulse inside that band)
-//  95 – 99 %   LoadingKernelSu
-// 100 %        Installed / Done
-
-private const val PROGRESS_CHECKING_END   = 0.05f
-private const val PROGRESS_EXPLOIT_START  = 0.05f
-private const val PROGRESS_EXPLOIT_END    = 0.50f
-private const val PROGRESS_KSU_START      = 0.50f
-private const val PROGRESS_KSU_END        = 0.85f
-private const val PROGRESS_EXPLOITING_START = 0.85f
-private const val PROGRESS_EXPLOITING_END   = 0.95f
-private const val PROGRESS_LOADING_KSU    = 0.97f
-private const val PROGRESS_DONE           = 1.00f
-
-// ---------------------------------------------------------------------------
-// ViewModel
-// ---------------------------------------------------------------------------
-
 class InstallViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val repository = PayloadRepository(application)
     private val historyStore = InstallHistoryStore(application)
-
-    // -----------------------------------------------------------------------
-    // Internal mutable state
-    // -----------------------------------------------------------------------
-
-    private val mutableUiState = MutableStateFlow(InstallUiState())
+    private val mutableState = MutableStateFlow(InstallUiState())
     private val mutableHistory = MutableStateFlow(historyStore.closeInterruptedRuns())
     private val mutableTargetCatalog = MutableStateFlow(TargetCatalogUiState())
-
-    private val mutableAccentColorEnum = MutableStateFlow(AppPreferences.accentColor(app))
-    private val mutableThemeModeEnum = MutableStateFlow(AppPreferences.themeMode(app))
-    private val mutableAdvancedMode = MutableStateFlow(AppPreferences.advancedMode(app))
-    private val mutableShizukuMode = MutableStateFlow(AppPreferences.shizukuMode(app))
-    private val mutableAutoReroot = MutableStateFlow(AppPreferences.autoReroot(app))
-    private val mutableLocalPayloadMode = MutableStateFlow(AppPreferences.localPayloadMode(app))
-
     private var discoveryJob: Job? = null
     private var installJob: Job? = null
     private var activeHistoryEntry: InstallHistoryEntry? = null
-    private var localPayloadUris: Map<String, Uri> = emptyMap()
-
-    @Volatile private var activeRunShizuku: Boolean? = null
-    @Volatile private var activeRunRebootUserspace: Boolean? = null
-
-    // -----------------------------------------------------------------------
-    // Public StateFlow API
-    // -----------------------------------------------------------------------
-
-    val uiState: StateFlow<InstallUiState> = mutableUiState.asStateFlow()
-    val installHistory: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
-
-    val accentColor: StateFlow<String> = mutableAccentColorEnum
-        .map { it.storedValue }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, mutableAccentColorEnum.value.storedValue)
-
-    val themeMode: StateFlow<String> = mutableThemeModeEnum
-        .map { it.storedValue }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, mutableThemeModeEnum.value.storedValue)
-
-    val advancedMode: StateFlow<Boolean> = mutableAdvancedMode.asStateFlow()
-    val shizukuMode: StateFlow<Boolean> = mutableShizukuMode.asStateFlow()
-    val autoReroot: StateFlow<Boolean> = mutableAutoReroot.asStateFlow()
-    val localPayloadMode: StateFlow<Boolean> = mutableLocalPayloadMode.asStateFlow()
-
-    // Legacy aliases
-    val state: StateFlow<InstallUiState> = uiState
-    val history: StateFlow<List<InstallHistoryEntry>> = installHistory
+    val state: StateFlow<InstallUiState> = mutableState.asStateFlow()
+    val history: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
     val targetCatalog: StateFlow<TargetCatalogUiState> = mutableTargetCatalog.asStateFlow()
 
-    // -----------------------------------------------------------------------
-    // Init
-    // -----------------------------------------------------------------------
-
     init {
-        viewModelScope.launch(Dispatchers.IO) {
-            val snap = runCatching { DeviceSnapshot.current() }.getOrNull()
-            val rooted = runCatching { NativeProbe.isKernelSuActive() }.getOrDefault(false)
-            mutableUiState.value = mutableUiState.value.copy(
-                device = snap,
-                isRooted = rooted,
-                kernelSuVersion = null,
-                androidVersion = snap?.androidRelease,
-                securityPatch = Build.VERSION.SECURITY_PATCH,
-                phase = InstallPhase.Ready,
-                statusMessage = app.getString(R.string.install_preparing),
-                progress = null,
-                progressLabel = null,
-            )
+        refresh()
+    }
+
+    fun refresh() {
+        if (installJob?.isActive == true) return
+        mutableHistory.value = historyStore.load()
+        discoveryJob?.cancel()
+        discoveryJob = viewModelScope.launch(Dispatchers.IO) {
+            val probe = NativeProbe.run()
+            if (detectInstalled()) {
+                mutableState.value = InstallUiState(
+                    phase = InstallPhase.Installed,
+                    message = app.getString(R.string.status_ksu_active),
+                    probeOutput = probe,
+                    log = probe,
+                )
+                return@launch
+            }
+            try {
+                val profile = repository.resolveTarget(DeviceSnapshot.current())
+                mutableState.value = InstallUiState(
+                    phase = InstallPhase.Ready,
+                    message = app.getString(R.string.status_not_installed),
+                    probeOutput = probe,
+                    log = "$probe\n${app.getString(R.string.log_profile, profile.profileId)}",
+                )
+            } catch (error: Throwable) {
+                mutableState.value = InstallUiState(
+                    phase = InstallPhase.Failed,
+                    message = app.getString(R.string.status_support_failed),
+                    probeOutput = probe,
+                    log = "$probe\n[-] ${error.message ?: error.javaClass.simpleName}",
+                )
+            }
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Public actions
-    // -----------------------------------------------------------------------
-
-    fun startRoot(profile: TargetProfile? = null) = install(profile)
-    fun stopSession() = cancel()
-
-    fun deleteHistoryEntry(id: String) = deleteHistoryEntries(setOf(id))
-    fun deleteAllHistoryEntries() = deleteHistoryEntries(mutableHistory.value.map { it.id }.toSet())
-
-    fun selectProfile(profile: TargetProfile?) {
-        mutableUiState.value = mutableUiState.value.copy(selectedProfile = profile)
+    fun deleteHistoryEntries(ids: Collection<String>) {
+        val runningId = activeHistoryEntry?.id
+        val toDelete = ids.filterNot { it == runningId }
+        if (toDelete.isEmpty()) return
+        toDelete.forEach(historyStore::delete)
+        mutableHistory.value = mutableHistory.value.filterNot { it.id in toDelete }
     }
 
-    fun setPendingInstallRequest(profileId: String?) {
-        mutableUiState.value = mutableUiState.value.copy(pendingInstallRequest = profileId)
-    }
-
-    fun consumePendingInstallRequest() {
-        mutableUiState.value = mutableUiState.value.copy(pendingInstallRequest = null)
-    }
-
-    // Settings setters --------------------------------------------------------
-
-    fun setAdvancedMode(enabled: Boolean) {
-        AppPreferences.setAdvancedMode(app, enabled)
-        mutableAdvancedMode.value = enabled
-    }
-
-    fun setShizukuMode(enabled: Boolean) {
-        AppPreferences.setShizukuMode(app, enabled)
-        mutableShizukuMode.value = enabled
-    }
-
-    fun setAutoReroot(enabled: Boolean) {
-        AppPreferences.setAutoReroot(app, enabled)
-        mutableAutoReroot.value = enabled
-    }
-
-    fun setLocalPayloadMode(enabled: Boolean) {
-        AppPreferences.setLocalPayloadMode(app, enabled)
-        mutableLocalPayloadMode.value = enabled
-    }
-
-    fun setAccentColor(color: String) {
-        val enum = AccentColor.fromStoredValue(color)
-        AppPreferences.setAccentColor(app, enum)
-        mutableAccentColorEnum.value = enum
-    }
-
-    fun setThemeMode(mode: String) {
-        val enum = AppThemeMode.fromStoredValue(mode)
-        AppPreferences.setThemeMode(app, enum)
-        mutableThemeModeEnum.value = enum
-    }
-
-    // -----------------------------------------------------------------------
-    // Discovery / catalog
-    // -----------------------------------------------------------------------
-
-    fun startDiscovery() {
-        if (discoveryJob?.isActive == true) return
-        discoveryJob = viewModelScope.launch(Dispatchers.IO) {
+    fun loadTargetCatalog() {
+        if (mutableTargetCatalog.value.loading) return
+        viewModelScope.launch(Dispatchers.IO) {
             mutableTargetCatalog.value = TargetCatalogUiState(loading = true)
             mutableTargetCatalog.value = try {
-                TargetCatalogUiState(profiles = repository.loadTargets())
-            } catch (e: Exception) {
-                TargetCatalogUiState(error = e.message ?: "Unknown error")
+                TargetCatalogUiState(
+                    profiles = repository.loadTargets().sortedWith(
+                        compareBy(
+                            TargetProfile::displayName,
+                            TargetProfile::profileId,
+                        ),
+                    ),
+                )
+            } catch (error: Throwable) {
+                TargetCatalogUiState(error = error.message ?: error.javaClass.simpleName)
             }
         }
     }
 
-    fun cancelDiscovery() {
+    fun install(profileId: String? = null) {
+        if (installJob?.isActive == true || mutableState.value.phase == InstallPhase.Installed) return
         discoveryJob?.cancel()
-        discoveryJob = null
-        mutableTargetCatalog.value = TargetCatalogUiState()
-    }
-
-    fun setLocalPayloadUris(uris: Map<String, Uri>) {
-        localPayloadUris = uris
-    }
-
-    fun installByProfileId(profileId: String?, rebootUserspace: Boolean? = null) {
-        if (installJob?.isActive == true) return
         installJob = viewModelScope.launch(Dispatchers.IO) {
-            val profile: TargetProfile? = when {
-                profileId == null || profileId == LOCAL_PROFILE_ID -> null
-                else -> try {
-                    repository.resolveTarget(profileId)
-                } catch (e: Exception) {
-                    mutableUiState.value = mutableUiState.value.copy(
-                        phase = InstallPhase.Failed,
-                        statusMessage = e.message ?: "Unknown error",
-                        progress = null,
-                        progressLabel = null,
-                    )
-                    return@launch
-                }
-            }
-            install(profile, rebootUserspace)
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Core install flow
-    // -----------------------------------------------------------------------
-
-    fun install(
-        profile: TargetProfile? = null,
-        rebootUserspace: Boolean? = null,
-    ) {
-        if (installJob?.isActive == true) return
-        installJob = viewModelScope.launch(Dispatchers.IO) {
+            mutableState.value = InstallUiState(
+                phase = InstallPhase.Checking,
+                probeOutput = mutableState.value.probeOutput,
+            )
             startHistory()
             try {
-                activeRunRebootUserspace = rebootUserspace
-                activeRunShizuku = AppPreferences.shizukuMode(app)
-
-                // ── 1. Shizuku pre-flight ─────────────────────────────────
-                setPhase(
-                    InstallPhase.Checking,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_CHECKING_END * 0.5f,
-                )
                 if (shizukuEnabled()) {
                     appendLog(app.getString(R.string.log_shizuku_prepare))
                     if (!ShizukuController.isRunning() && !ShizukuController.pingUntilRunning()) {
@@ -339,498 +149,381 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                     }
                     appendLog(app.getString(R.string.log_shizuku_permission))
                 }
-                setPhase(
-                    InstallPhase.Checking,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_CHECKING_END,
-                )
-
-                // ── 2. Resolve & download payloads ────────────────────────
-                val verified = resolvePayloads(profile)
-
-                // ── 3. Exploit with retry ─────────────────────────────────
-                setPhase(
-                    InstallPhase.Exploiting,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_EXPLOITING_START,
-                )
-                executeExploitWithRetry(verified.exploit, verified.profile.requiresFreshP0Session)
-
-                // ── 4. Optionally stage a local KernelSU override ─────────
-                val kernelSuUri = localPayloadUris[PAYLOAD_KERNELSU]
-                val finalPayloads = if (kernelSuUri != null) {
-                    repository.stageLocalKernelSu(verified, kernelSuUri) { msg, fraction ->
-                        appendLog("[*] $msg")
-                        if (fraction != null) emitProgress(
-                            PROGRESS_KSU_START + fraction * (PROGRESS_KSU_END - PROGRESS_KSU_START)
-                        )
-                    }
+                setPhase(InstallPhase.Checking, app.getString(R.string.status_checking_github))
+                val profile = if (profileId == null) {
+                    repository.resolveTarget(DeviceSnapshot.current())
                 } else {
-                    verified
+                    repository.resolveTarget(profileId)
                 }
-
-                // ── 5. Install KernelSU ───────────────────────────────────
-                setPhase(
-                    InstallPhase.LoadingKernelSu,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_LOADING_KSU,
-                )
-                installKernelSu(finalPayloads)
-
-                // ── 6. Optional userspace reboot ──────────────────────────
-                if (shouldRebootUserspace()) {
-                    appendLog(app.getString(R.string.log_reboot_userspace))
-                    runHelper("--reboot-userspace")
-                }
-
-                // ── 7. Refresh root status ────────────────────────────────
-                val nowRooted = runCatching { NativeProbe.isKernelSuActive() }.getOrDefault(true)
-                mutableUiState.value = mutableUiState.value.copy(
-                    isRooted = nowRooted,
-                    kernelSuVersion = null,
-                )
-
-                setPhase(
-                    InstallPhase.Installed,
-                    app.getString(R.string.log_install_complete),
-                    PROGRESS_DONE,
-                )
-                finishHistory(InstallRunResult.Succeeded)
-            } catch (e: Exception) {
-                val msg = e.message ?: "Unknown error"
-                mutableUiState.value = mutableUiState.value.copy(
-                    phase = InstallPhase.Failed,
-                    statusMessage = msg,
-                    progress = null,
-                    progressLabel = null,
-                )
-                appendLog("[!] Installation failed: $msg")
-                finishHistory(InstallRunResult.Failed)
-            } finally {
-                activeRunShizuku = null
-                activeRunRebootUserspace = null
-            }
-        }
-    }
-
-    /**
-     * Resolves which payload set to use and downloads/stages it.
-     * Emits progress in the [PROGRESS_EXPLOIT_START]–[PROGRESS_KSU_END] band.
-     */
-    private suspend fun resolvePayloads(profile: TargetProfile?): VerifiedPayloads {
-        val localExploitUri = localPayloadUris[PAYLOAD_EXPLOIT]
-
-        return when {
-            // User manually picked an exploit .so file
-            localExploitUri != null -> {
-                setPhase(
-                    InstallPhase.Downloading,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_EXPLOIT_START,
-                )
-                val syntheticProfile = TargetProfile(
-                    profileId = LOCAL_PROFILE_ID,
-                    displayName = "",
-                    models = setOf(DeviceSnapshot.current().model),
-                    kernelVersions = setOf(DeviceSnapshot.current().kernelVersion),
-                    exploit = RemoteArtifact("", -1L),
-                    kernelSu = RemoteArtifact("", -1L),
-                    requiresFreshP0Session = false,
-                )
-                repository.stageLocalExploit(syntheticProfile, localExploitUri) { msg, fraction ->
-                    appendLog("[*] $msg")
-                    if (fraction != null) emitProgress(
-                        PROGRESS_EXPLOIT_START + fraction * (PROGRESS_EXPLOIT_END - PROGRESS_EXPLOIT_START)
-                    )
-                }
-            }
-
-            // Caller supplied an explicit profile (e.g. from deep-link or UI selection)
-            profile != null -> {
-                setPhase(
-                    InstallPhase.Downloading,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_EXPLOIT_START,
-                )
+                appendLog(app.getString(R.string.log_profile, profile.profileId))
                 updateHistoryProfile(profile.profileId)
-                repository.download(profile) { msg, fraction ->
-                    appendLog("[*] $msg")
-                    if (fraction != null) emitDownloadProgress(fraction)
-                }
-            }
 
-            // Auto-detect from device snapshot
-            else -> {
-                setPhase(
-                    InstallPhase.Checking,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_CHECKING_END,
-                )
-                val snapshot = DeviceSnapshot.current()
-                val resolved = try {
-                    repository.resolveTarget(snapshot)
-                } catch (e: Exception) {
-                    mutableUiState.value = mutableUiState.value.copy(
-                        phase = InstallPhase.Ready,
-                        statusMessage = app.getString(R.string.install_preparing),
-                        progress = null,
-                        progressLabel = null,
-                    )
-                    throw e
-                }
-                setPhase(
-                    InstallPhase.Downloading,
-                    app.getString(R.string.install_preparing),
-                    PROGRESS_EXPLOIT_START,
-                )
-                updateHistoryProfile(resolved.profileId)
-                repository.download(resolved) { msg, fraction ->
-                    appendLog("[*] $msg")
-                    if (fraction != null) emitDownloadProgress(fraction)
-                }
+                setPhase(InstallPhase.Downloading, app.getString(R.string.status_downloading_payload))
+                val payloads = repository.download(profile) { appendLog("[*] $it") }
+                appendLog(app.getString(R.string.log_download_verified))
+
+                setPhase(InstallPhase.Exploiting, app.getString(R.string.status_exploit_running))
+                executeExploit(payloads.exploit)
+
+                setPhase(InstallPhase.LoadingKernelSu, app.getString(R.string.status_ksu_loading))
+                installKernelSu(payloads)
+
+                setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
+                appendLog(app.getString(R.string.log_install_complete))
+                finishHistory(InstallRunResult.Succeeded)
+            } catch (error: Throwable) {
+                appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
+                setPhase(InstallPhase.Failed, app.getString(R.string.status_install_failed))
+                finishHistory(InstallRunResult.Failed)
             }
         }
     }
 
-    /**
-     * Maps the flat 0–1 file fraction from [repository.download] onto the
-     * exploit (5–50 %) + KSU (50–85 %) segments.
-     *
-     * The repository downloads exploit first then KSU; we treat the first
-     * file as 0–0.5 of the combined range and the second as 0.5–1.0.
-     *
-     * Because we call this with every buffer chunk we can't tell which file
-     * we're in; instead we track the last emitted overall value and only
-     * advance it (never go backwards within a run), which naturally keeps
-     * the bar moving forward even when the fraction resets between files.
-     */
-    private var lastDownloadProgress: Float = PROGRESS_EXPLOIT_START
-
-    private fun emitDownloadProgress(fileFraction: Float) {
-        val totalRange = PROGRESS_KSU_END - PROGRESS_EXPLOIT_START      // 0.80
-        val candidate = PROGRESS_EXPLOIT_START + fileFraction * totalRange
-        val next = maxOf(lastDownloadProgress, candidate)
-        lastDownloadProgress = next
-        emitProgress(next)
-    }
-
-    /** Clamp and publish a raw 0–1 progress value + human-readable label. */
-    private fun emitProgress(raw: Float) {
-        val clamped = raw.coerceIn(0f, 1f)
-        val pct = (clamped * 100f).roundToInt()
-        mutableUiState.value = mutableUiState.value.copy(
-            progress = clamped,
-            progressLabel = "$pct %",
-        )
-    }
-
-    // -----------------------------------------------------------------------
-    // Exploit execution
-    // -----------------------------------------------------------------------
-
-    private suspend fun executeExploitWithRetry(
-        payload: File,
-        requiresFreshP0Session: Boolean,
-    ) {
-        val maxAttempts = EXPLOIT_ATTEMPTS.toIntOrNull() ?: 6
-        val bootToken = currentBootToken()
-        var lastError: Throwable? = null
-
-        for (attempt in 1..maxAttempts) {
-            if (attempt > 1) {
-                appendLog("[*] Retrying exploit (attempt $attempt / $maxAttempts)…")
-            }
+    // xrzcc fork: install from user-selected local payload + ksud (offline, no feed download).
+    fun installFromLocal(exploitUri: android.net.Uri, ksudUri: android.net.Uri) {
+        if (installJob?.isActive == true) return
+        discoveryJob?.cancel()
+        installJob = viewModelScope.launch(Dispatchers.IO) {
+            mutableState.value = InstallUiState(
+                phase = InstallPhase.Checking,
+                probeOutput = mutableState.value.probeOutput,
+            )
+            startHistory()
             try {
-                executeExploit(payload, requiresFreshP0Session, bootToken, attempt)
-                return // success
-            } catch (e: ExploitStallException) {
-                appendLog("[!] Attempt $attempt stalled – ${e.message}; retrying")
-                lastError = e
-            } catch (e: Exception) {
-                throw e
+                val dir = java.io.File(app.filesDir, "payloads/local-manual").apply { mkdirs() }
+                val exploit = copyUriToFile(exploitUri, java.io.File(dir, "cve-2026-43499-app.so"))
+                val ksud = copyUriToFile(ksudUri, java.io.File(dir, "ksud"))
+                android.system.Os.chmod(exploit.absolutePath, 0b100100100)
+                android.system.Os.chmod(ksud.absolutePath, 0b100100100)
+                updateHistoryProfile("local-manual")
+                setPhase(InstallPhase.Exploiting, app.getString(R.string.status_exploit_running))
+                executeExploit(exploit)
+                setPhase(InstallPhase.LoadingKernelSu, app.getString(R.string.status_ksu_loading))
+                installKernelSuFromFile(ksud)
+                setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
+                appendLog(app.getString(R.string.log_install_complete))
+                finishHistory(InstallRunResult.Succeeded)
+            } catch (error: Throwable) {
+                appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
+                setPhase(InstallPhase.Failed, app.getString(R.string.status_install_failed))
+                finishHistory(InstallRunResult.Failed)
             }
         }
-
-        throw lastError ?: IllegalStateException(
-            app.getString(R.string.error_exploit_timeout)
-        )
     }
 
-    private suspend fun executeExploit(
-        payload: File,
-        requiresFreshP0Session: Boolean,
-        bootToken: String?,
-        attempt: Int,
-    ) {
+    // xrzcc fork: probe and display current KernelSU / root status on demand.
+    fun checkSuStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val probe = NativeProbe.run()
+            val ksuActive = NativeProbe.isKernelSuActive()
+            val report = buildString {
+                appendLine(probe)
+                appendLine("KernelSU active: $ksuActive")
+            }
+            mutableState.value = mutableState.value.copy(
+                phase = if (ksuActive) InstallPhase.Installed else mutableState.value.phase,
+                message = if (ksuActive) app.getString(R.string.status_ksu_active) else "KernelSU not active",
+                probeOutput = report,
+                log = report,
+            )
+        }
+    }
+
+    private fun copyUriToFile(uri: android.net.Uri, destination: java.io.File): java.io.File {
+        destination.parentFile?.mkdirs()
+        app.contentResolver.openInputStream(uri)?.use { input ->
+            java.io.FileOutputStream(destination).use { output -> input.copyTo(output) }
+        } ?: error("Cannot open content URI: $uri")
+        return destination
+    }
+
+    private fun installKernelSuFromFile(ksudFile: java.io.File) {
+        if (shizukuEnabled()) {
+            shizukuStage(ksudFile, SHIZUKU_KSUD_PATH, "755")
+            shizukuStage(ksudFile, SHIZUKU_KSUD_STAGE_PATH, "755")
+            appendLog(app.getString(R.string.log_ksu_staged))
+        } else {
+            val source = shellQuote(ksudFile.absolutePath)
+            val stageCommand =
+                "/system/bin/cp $source /data/local/tmp/ksud-s25u-kdp && " +
+                    "/system/bin/cp $source /data/local/tmp/.ksud-stage && " +
+                    "/system/bin/chmod 755 /data/local/tmp/ksud-s25u-kdp /data/local/tmp/.ksud-stage"
+            val stage = runHelper("-c", stageCommand)
+            require(stage.code == 0) { app.getString(R.string.error_ksu_stage, stage.output) }
+            appendLog(app.getString(R.string.log_ksu_staged))
+        }
+        val lateLoad = runHelper("--late-load")
+        require(lateLoad.code == 0) {
+            app.getString(R.string.error_ksu_verify, lateLoad.code, lateLoad.output)
+        }
+        if (lateLoad.output.isNotBlank()) appendLog(lateLoad.output)
+        storeInstallReceipt()
+        appendLog(app.getString(R.string.log_ksu_control_verified))
+    }
+
+    private suspend fun executeExploit(payload: File) {
         val shizuku = shizukuEnabled()
         val logFile = if (shizuku) File(SHIZUKU_LOG_PATH) else File(app.filesDir, "exploit.log")
-
         if (shizuku) {
             ShizukuController.exec(arrayOf("rm", "-f", SHIZUKU_LOG_PATH)).waitFor()
         } else {
             logFile.delete()
         }
-
         val helper = helperFile()
         if (!shizuku) {
             require(helper.canExecute()) { app.getString(R.string.error_helper_unavailable) }
         }
-
-        val logPrefix = mutableUiState.value.log
-        val env = buildExploitEnvironment(bootToken, payload, helper, shizuku)
-
-        val process = launchExploitProcess(payload, helper, logFile, shizuku, env)
-
-        var lastLogSize = -1L
-        var lastLogChangeAt = SystemClock.elapsedRealtime()
-        val startedAt = lastLogChangeAt
-        val earlyOutput = StringBuilder()
-
-        // Indeterminate pulse within the Exploiting band (85–95 %)
-        var exploitPulse = PROGRESS_EXPLOITING_START
-        val exploitBand = PROGRESS_EXPLOITING_END - PROGRESS_EXPLOITING_START
-
-        try {
-            while (process.isAlive) {
-                drainProcessOutput(process, earlyOutput)
-
-                val logSize = logFile.length()
-                val now = SystemClock.elapsedRealtime()
-
-                if (logSize != lastLogSize) {
-                    lastLogSize = logSize
-                    lastLogChangeAt = now
-                }
-
-                val rawLog = logFile.readTextIfPresent()
-                publishExploitLog(logPrefix, rawLog)
-
-                // Advance pulse within the exploiting band (wraps slowly)
-                exploitPulse = PROGRESS_EXPLOITING_START +
-                    ((exploitPulse - PROGRESS_EXPLOITING_START + EXPLOIT_PULSE_STEP) % exploitBand)
-                emitProgress(exploitPulse)
-
-                val stallMs = now - lastLogChangeAt
-                val totalMs = now - startedAt
-
-                if (stallMs >= EXPLOIT_STALL_MILLIS) {
-                    throw ExploitStallException(app.getString(R.string.error_exploit_stalled))
-                }
-
-                require(totalMs < EXPLOIT_TOTAL_MILLIS) {
-                    app.getString(R.string.error_exploit_timeout)
-                }
-
-                delay(LOG_POLL_INTERVAL)
-            }
-
-            drainProcessOutput(process, earlyOutput)
-            val rawLog = if (shizuku) {
-                File(SHIZUKU_LOG_PATH).readTextIfPresent()
-            } else {
-                logFile.readTextIfPresent()
-            }
-            publishExploitLog(logPrefix, rawLog)
-
-            val exitCode = process.waitFor()
-            require(exitCode == 0) {
-                val detail = earlyOutput.toString().trim()
-                    .takeIf(String::isNotBlank)?.let { ": $it" } ?: ""
-                app.getString(R.string.error_payload_exit, exitCode, detail)
-            }
-
-            cacheP0Offset(bootToken, rawLog)
-            appendLog(app.getString(R.string.log_bootstrap_root))
-
-            require(detectInstalled()) { app.getString(R.string.error_success_marker) }
-        } finally {
-            killProcess(process)
-        }
-    }
-
-    private fun buildExploitEnvironment(
-        bootToken: String?,
-        payload: File,
-        helper: File,
-        shizuku: Boolean,
-    ): Array<String> {
-        val payloadPath = if (shizuku) SHIZUKU_PAYLOAD_PATH else payload.absolutePath
-        val helperPath = if (shizuku) SHIZUKU_HELPER_PATH else helper.absolutePath
-        return buildList {
-            add("EXPLOIT_ATTEMPTS=$EXPLOIT_ATTEMPTS")
-            add("P0_ATTEMPT_TIMEOUT_SEC=$P0_ATTEMPT_TIMEOUT_SEC")
-            add("EXPLOIT_ATTEMPT_TIMEOUT_SEC=$EXPLOIT_ATTEMPT_TIMEOUT_SEC")
-            add("CVE43499_ROOT_HELPER=$helperPath")
-            add("LD_PRELOAD=$payloadPath")
-            if (bootToken != null) {
-                cachedP0Offset(bootToken)?.let { add("$P0_OFFSET_ENV=$it") }
-            }
-        }.toTypedArray()
-    }
-
-    private fun launchExploitProcess(
-        payload: File,
-        helper: File,
-        logFile: File,
-        shizuku: Boolean,
-        env: Array<String>,
-    ): Process {
-        return if (shizuku) {
-            val stagedHelper = shizukuStage(nativeHelperFile(), SHIZUKU_HELPER_PATH, "755")
+        val logPrefix = mutableState.value.log
+        val bootToken = currentBootToken()
+        val process = if (shizuku) {
             val stagedPayload = shizukuStage(payload, SHIZUKU_PAYLOAD_PATH, "755")
             ShizukuController.exec(
-                arrayOf(
-                    stagedHelper.absolutePath,
-                    "--run-payload",
-                    stagedPayload.absolutePath,
-                    stagedHelper.absolutePath,
-                    SHIZUKU_LOG_PATH,
-                ),
-                env,
+                arrayOf("/system/bin/sh", "-c", "true"),
+                shizukuEnvironment(bootToken, stagedPayload.absolutePath, helper.absolutePath),
             )
         } else {
-            ProcessBuilder(
-                listOf(
-                    helper.absolutePath,
-                    "--run-payload",
-                    payload.absolutePath,
-                    helper.absolutePath,
-                    logFile.absolutePath,
-                ),
-            )
-                .redirectErrorStream(true)
-                .apply {
-                    environment().putAll(
-                        env.associate { entry ->
-                            val eq = entry.indexOf('=')
-                            if (eq >= 0) entry.substring(0, eq) to entry.substring(eq + 1)
-                            else entry to ""
-                        },
-                    )
-                }
-                .start()
+            val processBuilder = ProcessBuilder(
+                helper.absolutePath,
+                "--run-payload",
+                payload.absolutePath,
+                helper.absolutePath,
+                logFile.absolutePath,
+            ).redirectErrorStream(true)
+            processBuilder.environment().apply {
+                put("EXPLOIT_ATTEMPTS", EXPLOIT_ATTEMPTS)
+                put("P0_ATTEMPT_TIMEOUT_SEC", P0_ATTEMPT_TIMEOUT_SEC)
+                put("EXPLOIT_ATTEMPT_TIMEOUT_SEC", EXPLOIT_ATTEMPT_TIMEOUT_SEC)
+                cachedP0Offset(bootToken)?.let { put(P0_OFFSET_ENV, it) }
+            }
+            processBuilder.start()
         }
-    }
+        val captured = StringBuilder()
+        val readLog: () -> String = if (shizuku) {
+            { drainProcessOutput(process, captured) }
+        } else {
+            { logFile.readTextIfPresent() }
+        }
 
-    private suspend fun killProcess(process: Process) {
-        if (!process.isAlive) return
-        process.destroy()
-        delay(500.milliseconds)
-        if (process.isAlive) process.destroyForcibly()
+        try {
+            val startedAt = SystemClock.elapsedRealtime()
+            var lastProgressAt = startedAt
+            var lastRawLog = ""
+            while (process.isAlive) {
+                val rawLog = readLog()
+                if (rawLog != lastRawLog) {
+                    cacheP0Offset(bootToken, rawLog)
+                    publishExploitLog(logPrefix, rawLog)
+                    lastRawLog = rawLog
+                    lastProgressAt = SystemClock.elapsedRealtime()
+                }
+                val now = SystemClock.elapsedRealtime()
+                require(now - lastProgressAt < EXPLOIT_STALL_MILLIS) {
+                    app.getString(R.string.error_exploit_stalled)
+                }
+                require(now - startedAt < EXPLOIT_TOTAL_MILLIS) {
+                    app.getString(R.string.error_exploit_timeout)
+                }
+                delay(if (shizuku) SHIZUKU_LOG_POLL_INTERVAL else LOG_POLL_INTERVAL)
+            }
+
+            val exitCode = process.waitFor()
+            val rawLog = readLog()
+            cacheP0Offset(bootToken, rawLog)
+            publishExploitLog(logPrefix, rawLog)
+            val earlyOutput = readProcessOutput(process, shizuku).trim()
+            require(exitCode == 0) {
+                app.getString(
+                    R.string.error_payload_exit,
+                    exitCode,
+                    earlyOutput.takeIf(String::isNotBlank)?.let { " ($it)" } ?: "",
+                )
+            }
+            require(rawLog.contains("exploit completed") && rawLog.contains("done=1 root=1")) {
+                app.getString(R.string.error_success_marker)
+            }
+        } finally {
+            if (process.isAlive) {
+                process.destroy()
+                delay(500.milliseconds)
+                if (process.isAlive) process.destroyForcibly()
+            }
+        }
+        appendLog(app.getString(R.string.log_bootstrap_root))
     }
 
     private fun drainProcessOutput(process: Process, buffer: StringBuilder): String {
-        drainStream(process.inputStream, buffer)
-        return buffer.toString()
+        return try {
+            drainStream(process.inputStream, buffer)
+            drainStream(process.errorStream, buffer)
+            buffer.toString()
+        } catch (_: Throwable) {
+            buffer.toString()
+        }
     }
 
     private fun drainStream(stream: InputStream, buffer: StringBuilder) {
-        if (stream.available() > 0) {
-            val bytes = stream.readNBytes(minOf(stream.available(), MAX_DRAIN_BYTES))
-            buffer.append(bytes.toString(Charsets.UTF_8))
+        val data = ByteArray(4096)
+        while (stream.available() > 0) {
+            val count = stream.read(data)
+            if (count <= 0) break
+            buffer.append(String(data, 0, count, Charsets.UTF_8))
         }
     }
 
-    private fun publishExploitLog(logPrefix: String, rawLog: String) {
-        val clean = stripAnsi(rawLog)
-        val lines = clean.lines().takeLast(MAX_LOG_LINES)
-        mutableUiState.value = mutableUiState.value.copy(log = logPrefix + lines.joinToString("\n"))
+    private fun publishExploitLog(prefix: String, rawLog: String) {
+        mutableState.value = mutableState.value.copy(
+            log = listOf(prefix, stripAnsi(rawLog))
+                .filter(String::isNotBlank)
+                .joinToString("\n"),
+        )
+        updateHistoryLog()
     }
 
-    // -----------------------------------------------------------------------
-    // KernelSU installation
-    // -----------------------------------------------------------------------
-
-    private suspend fun installKernelSu(payloads: VerifiedPayloads) {
-        val ksud = payloads.kernelSu
-        appendLog(app.getString(R.string.log_kernelsu_source, ksud.absolutePath))
-
-        val (stagedKsud, stagePath) = stageKsud(ksud)
-
-        val stageCommand = "${shellQuote(stagedKsud.absolutePath)} install --path ${shellQuote(stagePath)}"
-        val stage = runHelper("-c", stageCommand)
-        require(stage.code == 0) {
-            app.getString(
-                R.string.error_ksu_stage,
-                stage.output.takeIf(String::isNotBlank) ?: stage.code.toString(),
-            )
+    private fun installKernelSu(payloads: VerifiedPayloads) {
+        if (shizukuEnabled()) {
+            shizukuStage(payloads.kernelSu, SHIZUKU_KSUD_PATH, "755")
+            shizukuStage(payloads.kernelSu, SHIZUKU_KSUD_STAGE_PATH, "755")
+            appendLog(app.getString(R.string.log_ksu_staged))
+        } else {
+            val source = shellQuote(payloads.kernelSu.absolutePath)
+            val stageCommand =
+                "/system/bin/cp $source /data/local/tmp/ksud-s25u-kdp && " +
+                    "/system/bin/cp $source /data/local/tmp/.ksud-stage && " +
+                    "/system/bin/chmod 755 /data/local/tmp/ksud-s25u-kdp /data/local/tmp/.ksud-stage"
+            val stage = runHelper("-c", stageCommand)
+            require(stage.code == 0) { app.getString(R.string.error_ksu_stage, stage.output) }
+            appendLog(app.getString(R.string.log_ksu_staged))
         }
-        appendLog(app.getString(R.string.log_ksu_staged))
 
         val lateLoad = runHelper("--late-load")
         require(lateLoad.code == 0) {
-            app.getString(R.string.error_ksu_verify, lateLoad.code,
-                lateLoad.output.takeIf(String::isNotBlank) ?: "")
+            app.getString(R.string.error_ksu_verify, lateLoad.code, lateLoad.output)
         }
-
-        val libksudPath = app.applicationInfo.nativeLibraryDir + "/libksud.so"
-        val verify = runHelper("-c", "\"${shellQuote(libksudPath)}\"")
-        require(verify.code == 0) {
-            app.getString(R.string.error_ksu_verify, verify.code,
-                verify.output.takeIf(String::isNotBlank) ?: "")
-        }
+        if (lateLoad.output.isNotBlank()) appendLog(lateLoad.output)
+        storeInstallReceipt()
         appendLog(app.getString(R.string.log_ksu_control_verified))
     }
 
-    private fun stageKsud(ksud: File): Pair<File, String> {
-        return if (shizukuEnabled()) {
-            val staged = shizukuStage(ksud, SHIZUKU_KSUD_PATH, "755")
-            shizukuStage(nativeHelperFile(), SHIZUKU_HELPER_PATH, "755")
-            staged to SHIZUKU_KSUD_STAGE_PATH
-        } else {
-            ksud to (app.filesDir.absolutePath + "/ksud-stage")
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Receipt / offset helpers
-    // -----------------------------------------------------------------------
-
     private fun detectInstalled(): Boolean {
-        val receipt = File(app.filesDir, INSTALL_RECEIPT)
-        if (!receipt.exists()) return false
-        return try {
-            receipt.readText(Charsets.UTF_8).contains(RECEIPT_VERIFIED)
-        } catch (_: Exception) {
-            false
-        }
+        if (NativeProbe.isKernelSuActive()) return true
+        val bootToken = currentBootToken() ?: return false
+        val receipt = app.getSharedPreferences(INSTALL_RECEIPT, Application.MODE_PRIVATE)
+        return receipt.getString(RECEIPT_BOOT_TOKEN, null) == bootToken &&
+            receipt.getBoolean(RECEIPT_VERIFIED, false)
     }
 
-    @Suppress("unused")
     private fun storeInstallReceipt() {
-        val receipt = File(app.filesDir, INSTALL_RECEIPT)
-        try {
-            val bootToken = currentBootToken() ?: return
-            receipt.writeText("$RECEIPT_BOOT_TOKEN=$bootToken\n$RECEIPT_VERIFIED=true", Charsets.UTF_8)
-        } catch (_: Exception) {
-            error(app.getString(R.string.error_receipt))
-        }
+        val bootToken = currentBootToken() ?: error(app.getString(R.string.error_boot_id))
+        val stored = app.getSharedPreferences(INSTALL_RECEIPT, Application.MODE_PRIVATE)
+            .edit()
+            .putString(RECEIPT_BOOT_TOKEN, bootToken)
+            .putBoolean(RECEIPT_VERIFIED, true)
+            .commit()
+        require(stored) { app.getString(R.string.error_receipt) }
     }
 
     private fun currentBootToken(): String? = runCatching {
-        File("/proc/sys/kernel/random/boot_id").readText(Charsets.UTF_8).trim()
-    }.getOrElse { null }
+        File("/proc/sys/kernel/random/boot_id")
+            .readText(Charsets.US_ASCII)
+            .trim()
+            .takeIf(String::isNotBlank)
+    }.getOrNull()
 
     private fun cachedP0Offset(bootToken: String?): String? {
         if (bootToken == null) return null
-        val prefs = app.getSharedPreferences(P0_OFFSET_PREFS, android.content.Context.MODE_PRIVATE)
-        val stored = prefs.getString(bootToken, null) ?: return null
-        return stored.takeIf { it.matches(Regex("[0-9a-fx]+")) }
+        val stored = app.getSharedPreferences(P0_CACHE, Application.MODE_PRIVATE)
+        if (stored.getString(P0_CACHE_BOOT_TOKEN, null) != bootToken) return null
+        return stored.getString(P0_CACHE_OFFSET, null)
     }
 
-    private fun cacheP0Offset(bootToken: String?, rawLog: String) {
+    private fun cacheP0Offset(bootToken: String?, log: String) {
         if (bootToken == null) return
-        val match = P0_OFFSET_PATTERN.find(rawLog) ?: return
-        val offset = match.groupValues[1]
-        app.getSharedPreferences(P0_OFFSET_PREFS, android.content.Context.MODE_PRIVATE)
-            .edit()
-            .putString(bootToken, offset)
+        val match = P0_OFFSET_PATTERN.findAll(log).lastOrNull() ?: return
+        val offset = match.groupValues[1].toLongOrNull(16) ?: return
+        if (offset !in 0..P0_OFFSET_MAX || offset and P0_OFFSET_MASK != 0L) return
+        val value = "0x${offset.toString(16)}"
+        val stored = app.getSharedPreferences(P0_CACHE, Application.MODE_PRIVATE)
+        if (stored.getString(P0_CACHE_BOOT_TOKEN, null) == bootToken &&
+            stored.getString(P0_CACHE_OFFSET, null) == value
+        ) return
+        stored.edit()
+            .putString(P0_CACHE_BOOT_TOKEN, bootToken)
+            .putString(P0_CACHE_OFFSET, value)
             .apply()
     }
 
-    // -----------------------------------------------------------------------
-    // History helpers
-    // -----------------------------------------------------------------------
+    private fun helperFile(): File =
+        if (shizukuEnabled()) {
+            shizukuStage(nativeHelperFile(), SHIZUKU_HELPER_PATH, "755")
+        } else {
+            nativeHelperFile()
+        }
+
+    private fun nativeHelperFile() = File(app.applicationInfo.nativeLibraryDir, "libcve43499root.so")
+
+    private fun shizukuEnabled(): Boolean = AppPreferences.shizukuMode(app)
+
+    private fun shizukuStage(source: File, target: String, mode: String): File {
+        val staged = File(target)
+        if (staged.exists() && staged.length() == source.length()) return staged
+        try {
+            ShizukuController.writeFile(target, mode, source.inputStream())
+        } catch (error: Throwable) {
+            throw IllegalStateException(
+                app.getString(R.string.error_shizuku_stage, target, error.message.orEmpty()),
+                error,
+            )
+        }
+        return staged
+    }
+
+    private fun shizukuEnvironment(
+        bootToken: String?,
+        payloadPath: String,
+        helperPath: String,
+    ): Array<String> = buildList {
+        add("EXPLOIT_ATTEMPTS=$EXPLOIT_ATTEMPTS")
+        add("P0_ATTEMPT_TIMEOUT_SEC=$P0_ATTEMPT_TIMEOUT_SEC")
+        add("EXPLOIT_ATTEMPT_TIMEOUT_SEC=$EXPLOIT_ATTEMPT_TIMEOUT_SEC")
+        add("CVE43499_ROOT_HELPER=$helperPath")
+        add("LD_PRELOAD=$payloadPath")
+        cachedP0Offset(bootToken)?.let { add("$P0_OFFSET_ENV=$it") }
+    }.toTypedArray()
+
+    private fun readProcessOutput(process: Process, shizuku: Boolean): String {
+        val stdout = process.inputStream.bufferedReader().use { it.readText() }
+        val stderr = if (shizuku) process.errorStream.bufferedReader().use { it.readText() } else ""
+        return stdout + stderr
+    }
+
+    private fun runHelper(vararg arguments: String): CommandResult {
+        val helper = helperFile()
+        val process = if (shizukuEnabled()) {
+            ShizukuController.exec(arrayOf(helper.absolutePath) + arguments)
+        } else {
+            ProcessBuilder(listOf(helper.absolutePath) + arguments)
+                .redirectErrorStream(true)
+                .start()
+        }
+        val output = readProcessOutput(process, shizukuEnabled())
+        return CommandResult(process.waitFor(), stripAnsi(output.trim()))
+    }
+
+    private fun shellQuote(value: String) = "'${value.replace("'", "'\\''")}'"
+
+    private fun setPhase(phase: InstallPhase, message: String) {
+        mutableState.value = mutableState.value.copy(phase = phase, message = message)
+        appendLog("[*] $message")
+    }
+
+    private fun appendLog(line: String) {
+        val cleanLine = stripAnsi(line).trim()
+        if (cleanLine.isBlank()) return
+        mutableState.value = mutableState.value.copy(
+            log = (mutableState.value.log + "\n" + cleanLine).trim(),
+        )
+        updateHistoryLog()
+    }
 
     private fun startHistory() {
         val entry = historyStore.create()
@@ -847,202 +540,56 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun updateHistoryLog() =
-        updateHistory { it.copy(log = mutableUiState.value.log) }
+        updateHistory { it.copy(log = mutableState.value.log) }
 
     private fun updateHistoryProfile(profileId: String) =
         updateHistory { it.copy(profileId = profileId) }
 
-    private fun finishHistory(result: InstallRunResult) =
-        updateHistory {
-            it.copy(
+    private fun finishHistory(result: InstallRunResult) {
+        updateHistory { entry ->
+            entry.copy(
                 completedAtMillis = System.currentTimeMillis(),
                 result = result,
-                log = mutableUiState.value.log,
+                log = mutableState.value.log,
             )
         }
+        activeHistoryEntry = null
+    }
 
     private fun publishHistory(entry: InstallHistoryEntry) {
-        mutableHistory.value = buildList {
-            add(entry)
-            addAll(mutableHistory.value.filter { it.id != entry.id })
-        }
+        mutableHistory.value = (mutableHistory.value.filterNot { it.id == entry.id } + entry)
+            .sortedByDescending(InstallHistoryEntry::startedAtMillis)
     }
 
-    // -----------------------------------------------------------------------
-    // State helpers
-    // -----------------------------------------------------------------------
-
-    private fun setPhase(phase: InstallPhase, message: String, progress: Float? = null) {
-        val pct = progress?.let { (it.coerceIn(0f, 1f) * 100f).roundToInt() }
-        mutableUiState.value = mutableUiState.value.copy(
-            phase = phase,
-            statusMessage = message,
-            progress = progress?.coerceIn(0f, 1f),
-            progressLabel = pct?.let { "$it %" },
-        )
-        updateHistoryLog()
-    }
-
-    private fun appendLog(line: String) {
-        val current = mutableUiState.value.log
-        val lines = current.lines()
-        val trimmed = if (lines.size >= MAX_LOG_LINES) {
-            lines.takeLast(MAX_LOG_LINES - 1).joinToString("\n")
-        } else {
-            current
-        }
-        mutableUiState.value = mutableUiState.value.copy(
-            log = if (trimmed.isEmpty()) line else "$trimmed\n$line",
-        )
-        updateHistoryLog()
-    }
-
-    private fun error(message: String): Nothing = throw IllegalStateException(message)
-
-    private fun shouldRebootUserspace(): Boolean =
-        activeRunRebootUserspace == true ||
-            (activeRunRebootUserspace == null && AppPreferences.rebootAfterInstall(app))
-
-    // -----------------------------------------------------------------------
-    // Native helpers
-    // -----------------------------------------------------------------------
-
-    private fun helperFile(): File =
-        File(app.applicationInfo.nativeLibraryDir, "libcve43499root.so").also {
-            require(it.exists()) { app.getString(R.string.error_helper_unavailable) }
-        }
-
-    private fun nativeHelperFile() = File(app.applicationInfo.nativeLibraryDir, "libcve43499root.so")
-
-    private fun shizukuEnabled(): Boolean = activeRunShizuku ?: AppPreferences.shizukuMode(app)
-
-    private fun shizukuStage(source: File, target: String, mode: String): File {
-        val result = ShizukuController.exec(arrayOf("cp", source.absolutePath, target)).waitFor()
-        require(result == 0) {
-            app.getString(R.string.error_shizuku_stage, source.name, "cp exited $result")
-        }
-        ShizukuController.exec(arrayOf("chmod", mode, target)).waitFor()
-        return File(target)
-    }
-
-    private suspend fun runHelper(vararg arguments: String): CommandResult =
-        withContext(Dispatchers.IO) {
-            val helper = helperFile()
-            val process = if (shizukuEnabled()) {
-                ShizukuController.exec(arrayOf(helper.absolutePath) + arguments)
-            } else {
-                ProcessBuilder(listOf(helper.absolutePath) + arguments)
-                    .redirectErrorStream(true)
-                    .start()
-            }
-            val captured = StringBuilder()
-            val startedAt = SystemClock.elapsedRealtime()
-            try {
-                while (process.isAlive) {
-                    drainProcessOutput(process, captured)
-                    require(SystemClock.elapsedRealtime() - startedAt < HELPER_TIMEOUT_MILLIS) {
-                        app.getString(
-                            R.string.error_helper_timeout,
-                            captured.toString().trim()
-                                .takeIf(String::isNotBlank)?.let { ": $it" } ?: "",
-                        )
-                    }
-                    delay(HELPER_POLL_INTERVAL)
-                }
-                drainProcessOutput(process, captured)
-                CommandResult(process.waitFor(), stripAnsi(captured.toString().trim()))
-            } finally {
-                killProcess(process)
-            }
-        }
-
-    private fun shellQuote(value: String) = "'${value.replace("'", "'\\''")}'"
-
-    // -----------------------------------------------------------------------
-    // Public misc
-    // -----------------------------------------------------------------------
-
-    fun refresh() {
-        mutableHistory.value = historyStore.closeInterruptedRuns()
-    }
-
-    fun loadTargetCatalog() = startDiscovery()
-
-    fun deleteHistoryEntries(ids: Set<String>) {
-        ids.forEach { historyStore.delete(it) }
-        mutableHistory.value = historyStore.load()
-    }
-
-    fun cancel() {
-        installJob?.cancel()
-        installJob = null
-        if (mutableUiState.value.busy) {
-            mutableUiState.value = mutableUiState.value.copy(
-                phase = InstallPhase.Failed,
-                statusMessage = "Installation cancelled",
-                progress = null,
-                progressLabel = null,
-            )
-        }
-    }
-
-    fun clearError() {
-        if (mutableUiState.value.phase == InstallPhase.Failed) {
-            mutableUiState.value = mutableUiState.value.copy(
-                phase = InstallPhase.Ready,
-                statusMessage = "",
-                progress = null,
-                progressLabel = null,
-            )
-        }
-    }
-
-    private fun stripAnsi(text: String): String =
-        text.replace(Regex("\u001B\\[[0-9;]*[mGKHF]"), "")
-
-    private fun File.readTextIfPresent(): String =
-        if (exists()) runCatching { readText(Charsets.UTF_8) }.getOrDefault("") else ""
-
-    // -----------------------------------------------------------------------
-    // Constants
-    // -----------------------------------------------------------------------
+    private fun File.readTextIfPresent(): String = if (exists()) readText() else ""
 
     companion object {
-        internal const val PAYLOAD_EXPLOIT = "exploit"
-        internal const val PAYLOAD_KERNELSU = "kernelsu"
-        internal const val LOCAL_PROFILE_ID = "__local__"
-
+        private const val EXPLOIT_ATTEMPTS = "24"
+        private const val P0_ATTEMPT_TIMEOUT_SEC = "45"
+        private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "120"
+        private const val EXPLOIT_STALL_MILLIS = 90_000L
+        private const val EXPLOIT_TOTAL_MILLIS = 900_000L
         private const val INSTALL_RECEIPT = "install_receipt"
-        private const val RECEIPT_BOOT_TOKEN = "boot_token"
+        private const val RECEIPT_BOOT_TOKEN = "kernel_boot_id"
         private const val RECEIPT_VERIFIED = "verified"
-
-        private const val P0_OFFSET_PREFS = "p0_offset_cache"
-        private const val P0_OFFSET_ENV = "CVE43499_P0_OFFSET"
-        private val P0_OFFSET_PATTERN = Regex("""p0_offset=([0-9a-fx]+)""")
-
+        private const val P0_CACHE = "p0_cache"
+        private const val P0_CACHE_BOOT_TOKEN = "kernel_boot_id"
+        private const val P0_CACHE_OFFSET = "offset"
+        private const val P0_OFFSET_ENV = "SLIDE_P0_OFFSET"
+        private const val P0_OFFSET_MAX = 0x1f0000L
+        private const val P0_OFFSET_MASK = 0xffffL
         private const val SHIZUKU_LOG_PATH = "/data/local/tmp/ksu-exploit.log"
         private const val SHIZUKU_HELPER_PATH = "/data/local/tmp/ksu-helper"
         private const val SHIZUKU_PAYLOAD_PATH = "/data/local/tmp/ksu-payload"
         private const val SHIZUKU_KSUD_PATH = "/data/local/tmp/ksud-s25u-kdp"
         private const val SHIZUKU_KSUD_STAGE_PATH = "/data/local/tmp/.ksud-stage"
+        private val LOG_POLL_INTERVAL = 250.milliseconds
+        private val SHIZUKU_LOG_POLL_INTERVAL = 1.seconds
+        private val ANSI_ESCAPE = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
+        private val P0_OFFSET_PATTERN = Regex(
+            "slide-kaslr-ok[^\\n]*slide=([0-9a-fA-F]{16})",
+        )
 
-        private const val EXPLOIT_ATTEMPTS = "6"
-        private const val P0_ATTEMPT_TIMEOUT_SEC = "18"
-        private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "90"
-
-        private val EXPLOIT_STALL_MILLIS: Long = 30.seconds.inWholeMilliseconds
-        private val EXPLOIT_TOTAL_MILLIS: Long = 10.minutes.inWholeMilliseconds
-        private val HELPER_TIMEOUT_MILLIS: Long = 60.seconds.inWholeMilliseconds
-        private val LOG_POLL_INTERVAL: Long = 500.milliseconds.inWholeMilliseconds
-        private val HELPER_POLL_INTERVAL: Long = 100.milliseconds.inWholeMilliseconds
-
-        private const val MAX_LOG_LINES = 200
-        private const val MAX_DRAIN_BYTES = 65_536
-
-        // Small step for the indeterminate pulse during exploit execution
-        private const val EXPLOIT_PULSE_STEP = 0.002f
+        private fun stripAnsi(value: String): String = ANSI_ESCAPE.replace(value, "").replace("\r", "")
     }
 }
-
-/** Thrown when the exploit log stops growing; triggers a retry in [executeExploitWithRetry]. */
-private class ExploitStallException(message: String) : Exception(message)
