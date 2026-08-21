@@ -79,10 +79,84 @@ class MainActivity : ComponentActivity() {
 // ---------------------------------------------------------------------------
 
 @Composable
+<<<<<<< HEAD
 fun MainScreen(viewModel: InstallViewModel) {
     val navController = rememberNavController()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val installHistory by viewModel.installHistory.collectAsStateWithLifecycle()
+=======
+private fun RootApp(
+    installViewModel: InstallViewModel,
+    accentColor: AccentColor,
+    themeMode: AppThemeMode,
+    advancedMode: Boolean,
+    shizukuMode: Boolean,
+    onAccentColorChanged: (AccentColor) -> Unit,
+    onThemeModeChanged: (AppThemeMode) -> Unit,
+    onAdvancedModeChanged: (Boolean) -> Unit,
+    onShizukuModeChanged: (Boolean) -> Unit,
+    openInstaller: (String?) -> Unit,
+) {
+    val installState by installViewModel.state.collectAsStateWithLifecycle()
+    val history by installViewModel.history.collectAsStateWithLifecycle()
+    val targetCatalog by installViewModel.targetCatalog.collectAsStateWithLifecycle()
+    var selectedPage by remember { mutableStateOf(AppPage.Overview) }
+    var showInstallConfirmation by remember { mutableStateOf(false) }
+    var showTargetPicker by remember { mutableStateOf(false) }
+    var selectedProfile by remember { mutableStateOf<TargetProfile?>(null) }
+    var compatibilityWarning by remember { mutableStateOf<CompatibilityWarning?>(null) }
+    val device = remember { DeviceSnapshot.current() }
+    val context = LocalContext.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
+    var updateCardDismissed by remember { mutableStateOf(false) }
+    // xrzcc fork: local manual payload + ksud selection (offline install, no feed).
+    var pendingPayloadUri by remember { mutableStateOf<Uri?>(null) }
+    val pickPayload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) pendingPayloadUri = uri
+    }
+    val pickKsud = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val payload = pendingPayloadUri
+        if (uri != null && payload != null) {
+            installViewModel.installFromLocal(payload, uri)
+            pendingPayloadUri = null
+        }
+    }
+    val checkForUpdate: () -> Unit = {
+        if (!updateStatus.busy) {
+            updateStatus = UpdateStatus.Checking
+            scope.launch {
+                val info = AppUpdater.fetchLatestRelease()
+                updateStatus = when {
+                    info == null -> UpdateStatus.Failed
+                    AppUpdater.isUpdateAvailable(info.versionName, BuildConfig.VERSION_NAME) ->
+                        UpdateStatus.Available(info)
+                    else -> UpdateStatus.UpToDate
+                }
+            }
+        }
+    }
+    val startDownload: (UpdateInfo) -> Unit = { info ->
+        val apkUrl = info.apkUrl
+        if (apkUrl == null) {
+            AppUpdater.openReleasesPage(context)
+        } else {
+            updateStatus = UpdateStatus.Downloading(info, 0f)
+            scope.launch {
+                val apk = AppUpdater.downloadApk(context, apkUrl) { progress ->
+                    updateStatus = UpdateStatus.Downloading(info, progress)
+                }
+                if (apk == null || !AppUpdater.installApk(context, apk)) {
+                    Toast.makeText(context, context.getString(R.string.updater_download_failed), Toast.LENGTH_SHORT).show()
+                    AppUpdater.openReleasesPage(context)
+                }
+                updateStatus = UpdateStatus.Available(info)
+            }
+        }
+    }
+    LaunchedEffect(Unit) { checkForUpdate() }
+>>>>>>> acd8def (UI 接入：手动选 payload/su + 检查 SU 状态入口)
 
     // Pending install-request confirmation dialog
     val pendingRequest = uiState.pendingInstallRequest
@@ -120,11 +194,40 @@ fun MainScreen(viewModel: InstallViewModel) {
                     catalogState = viewModel.targetCatalog.collectAsStateWithLifecycle().value,
                 )
             }
+<<<<<<< HEAD
             composable("history") {
                 HistoryScreen(
                     history = installHistory,
                     onDelete = { viewModel.deleteHistoryEntry(it.id) },
                     onDeleteAll = { viewModel.deleteAllHistoryEntries() },
+=======
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) { padding ->
+        AnimatedContent(targetState = selectedPage, label = "page") { page ->
+            when (page) {
+                AppPage.Overview -> OverviewPage(
+                    padding = padding,
+                    device = device,
+                    installState = installState,
+                    updateStatus = updateStatus,
+                    updateCardDismissed = updateCardDismissed,
+                    onDismissUpdateCard = { updateCardDismissed = true },
+                    onStartDownload = startDownload,
+                    onInstall = {
+                        selectedProfile = null
+                        if (advancedMode) {
+                            showTargetPicker = true
+                            installViewModel.loadTargetCatalog()
+                        } else {
+                            showInstallConfirmation = true
+                        }
+                    },
+                    onPickPayload = { pickPayload.launch(arrayOf("*/*")) },
+                    onPickKsudAndInstall = { pickKsud.launch(arrayOf("*/*")) },
+                    payloadSelected = pendingPayloadUri != null,
+                    onCheckSu = { installViewModel.checkSuStatus() },
+>>>>>>> acd8def (UI 接入：手动选 payload/su + 检查 SU 状态入口)
                 )
             }
             composable("settings") {
@@ -199,6 +302,7 @@ fun OverviewScreen(
 ) {
     var showProfileSheet by remember { mutableStateOf(false) }
 
+<<<<<<< HEAD
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -213,6 +317,159 @@ fun OverviewScreen(
                 device = device,
                 androidVersion = uiState.androidVersion ?: "",
                 securityPatch = uiState.securityPatch ?: "",
+=======
+private fun clickHaptic(view: View) {
+    view.performHapticFeedback(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            HapticFeedbackConstants.CONFIRM
+        } else {
+            HapticFeedbackConstants.LONG_PRESS
+        },
+    )
+}
+
+@Composable
+private fun DialogDimAmount(amount: Float) {
+    val window = (LocalView.current.parent as DialogWindowProvider).window
+    SideEffect { window.setDimAmount(amount) }
+}
+
+@Composable
+private fun OverviewPage(
+    padding: PaddingValues,
+    device: DeviceSnapshot,
+    installState: InstallUiState,
+    updateStatus: UpdateStatus,
+    updateCardDismissed: Boolean,
+    onDismissUpdateCard: () -> Unit,
+    onStartDownload: (UpdateInfo) -> Unit,
+    onInstall: () -> Unit,
+    onPickPayload: () -> Unit,
+    onPickKsudAndInstall: () -> Unit,
+    payloadSelected: Boolean,
+    onCheckSu: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(padding),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 54.dp, bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_app_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp),
+                )
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineLarge,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                AppVersionText(
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                )
+            }
+        }
+        if (
+            !updateCardDismissed &&
+            updateStatus.info != null
+        ) {
+            item {
+                UpdateCard(
+                    status = updateStatus,
+                    onDismiss = onDismissUpdateCard,
+                    onStartDownload = onStartDownload,
+                )
+            }
+        }
+        item { InstallStatusCard(installState, onInstall) }
+        item { ManualPayloadCard(onPickPayload, onPickKsudAndInstall, payloadSelected) }
+        item { SuStatusCard(onCheckSu, installState) }
+        item { DeviceCard(device) }
+        item { HowItWorksCard() }
+    }
+}
+
+private sealed interface UpdateStatus {
+    data object Idle : UpdateStatus
+    data object Checking : UpdateStatus
+    data class Available(val info: UpdateInfo) : UpdateStatus
+    data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateStatus
+    data object UpToDate : UpdateStatus
+    data object Failed : UpdateStatus
+}
+
+private val UpdateStatus.busy: Boolean
+    get() = this is UpdateStatus.Checking || this is UpdateStatus.Downloading
+
+private val UpdateStatus.info: UpdateInfo?
+    get() = when (this) {
+        is UpdateStatus.Available -> this.info
+        is UpdateStatus.Downloading -> this.info
+        else -> null
+    }
+
+@Composable
+private fun UpdateCard(
+    status: UpdateStatus,
+    onDismiss: () -> Unit,
+    onStartDownload: (UpdateInfo) -> Unit,
+) {
+    val view = LocalView.current
+    val info = status.info
+    if (info == null) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = stringResource(R.string.updater_available_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = {
+                        clickHaptic(view)
+                        onDismiss()
+                    },
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.action_close),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.updater_available_body, info.versionName),
+                style = MaterialTheme.typography.bodyMedium,
+>>>>>>> acd8def (UI 接入：手动选 payload/su + 检查 SU 状态入口)
             )
         }
 
@@ -270,6 +527,374 @@ fun OverviewScreen(
                     progress = { uiState.progress },
                     modifier = Modifier.fillMaxWidth(),
                 )
+<<<<<<< HEAD
+=======
+                installState.phase == InstallPhase.Installed -> Icon(
+                    Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(44.dp),
+                )
+                installState.phase == InstallPhase.Failed -> Icon(
+                    Icons.Rounded.Warning, contentDescription = null, modifier = Modifier.size(44.dp),
+                )
+                else -> Icon(
+                    Icons.Rounded.Warning, contentDescription = null, modifier = Modifier.size(44.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                if (installState.phase == InstallPhase.Installed) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_kernelsu),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            text = stringResource(R.string.status_ksu_active),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                } else {
+                    Text(
+                        text = when (installState.phase) {
+                            InstallPhase.Ready -> stringResource(R.string.status_not_installed)
+                            else -> installState.message
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Text(
+                    text = when (installState.phase) {
+                        InstallPhase.Installed -> stringResource(
+                            if (managerInstalled) {
+                                R.string.install_tap_open_manager
+                            } else {
+                                R.string.install_tap_manager
+                            },
+                        )
+                        InstallPhase.Failed -> stringResource(R.string.install_tap_retry)
+                        else -> stringResource(R.string.install_tap_start)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f),
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualPayloadCard(
+    onPickPayload: () -> Unit,
+    onPickKsudAndInstall: () -> Unit,
+    payloadSelected: Boolean,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "手动选择 Payload + KernelSU（离线，不联网）",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "先选 cve-2026-43499-app.so，再选 ksud 二进制（如 ksud-m1q-...-kdp）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "1. 选择 payload .so",
+                    modifier = Modifier
+                        .clickable { onPickPayload() }
+                        .padding(vertical = 8.dp, horizontal = 12.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = if (payloadSelected) "2. 选择 ksud 并安装" else "2. 先完成上一步",
+                    modifier = Modifier
+                        .clickable(enabled = payloadSelected) { onPickKsudAndInstall() }
+                        .padding(vertical = 8.dp, horizontal = 12.dp),
+                    color = if (payloadSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuStatusCard(onCheckSu: () -> Unit, installState: InstallUiState) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "检查当前 SU 状态",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (installState.probeOutput.isNotBlank()) {
+                Text(
+                    text = installState.probeOutput,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = "检查 KernelSU 状态",
+                modifier = Modifier
+                    .clickable { onCheckSu() }
+                    .padding(vertical = 8.dp, horizontal = 12.dp),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeviceCard(device: DeviceSnapshot) {
+    val view = LocalView.current
+    var kernelExpanded by remember { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            InfoRow(Icons.Rounded.Memory, stringResource(R.string.device), "${device.manufacturer} ${device.model} (${device.device})")
+            InfoRow(Icons.Rounded.Code, stringResource(R.string.firmware), device.buildId)
+            InfoRow(Icons.Rounded.Info, stringResource(R.string.system), "Android ${device.androidRelease} (API ${device.sdk})")
+            InfoRow(
+                icon = Icons.Rounded.Info,
+                label = stringResource(R.string.kernel),
+                value = if (kernelExpanded) device.kernelVersionFull else device.kernelRelease,
+                onClick = {
+                    clickHaptic(view)
+                    kernelExpanded = !kernelExpanded
+                },
+            )
+            InfoRow(Icons.Rounded.Security, stringResource(R.string.system_abi), "${device.abi} (${device.pageSize / 1024}K)")
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = if (onClick != null) {
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClick = onClick)
+        } else {
+            Modifier
+        },
+        horizontalArrangement = Arrangement.spacedBy(13.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Column {
+            Text(label, style = MaterialTheme.typography.titleSmall)
+            Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun HistoryPage(
+    padding: PaddingValues,
+    history: List<InstallHistoryEntry>,
+    onDeleteEntries: (Set<String>) -> Unit,
+) {
+    val view = LocalView.current
+    var selectedHistoryId by remember { mutableStateOf<String?>(null) }
+    var selectionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingDeleteIds by remember { mutableStateOf<Set<String>?>(null) }
+    val selectedEntry = history.firstOrNull { it.id == selectedHistoryId }
+    val selectableIds = history
+        .filter { it.result != InstallRunResult.Running }
+        .map { it.id }
+        .toSet()
+    val selecting = selectionIds.isNotEmpty()
+    BackHandler(enabled = selectedEntry != null || selecting) {
+        if (selecting) {
+            selectionIds = emptySet()
+        } else {
+            selectedHistoryId = null
+        }
+    }
+
+    pendingDeleteIds?.let { ids ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteIds = null },
+            icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
+            title = {
+                DialogDimAmount(0.34f)
+                Text(pluralStringResource(R.plurals.history_delete_selected_title, ids.size, ids.size))
+            },
+            text = { Text(pluralStringResource(R.plurals.history_delete_selected_body, ids.size, ids.size)) },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    clickHaptic(view)
+                    onDeleteEntries(ids)
+                    selectionIds = emptySet()
+                    pendingDeleteIds = null
+                }) {
+                    Text(stringResource(R.string.history_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clickHaptic(view)
+                    pendingDeleteIds = null
+                }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    AnimatedContent(
+        targetState = selectedEntry,
+        contentKey = { it?.id ?: "history-list" },
+        label = "history-detail",
+    ) { entry ->
+        if (entry == null) {
+            HistoryList(
+                padding = padding,
+                history = history,
+                selectionIds = selectionIds,
+                selectableIds = selectableIds,
+                onToggleSelection = { id ->
+                    selectionIds = if (id in selectionIds) {
+                        selectionIds - id
+                    } else {
+                        selectionIds + id
+                    }
+                },
+                onSelectAll = {
+                    selectionIds = if (selectionIds.size == selectableIds.size) {
+                        emptySet()
+                    } else {
+                        selectableIds
+                    }
+                },
+                onClearSelection = { selectionIds = emptySet() },
+                onEntryClick = { selectedHistoryId = it.id },
+                onDeleteSelected = { pendingDeleteIds = selectionIds },
+            )
+        } else {
+            HistoryDetail(
+                padding = padding,
+                entry = entry,
+                onBack = { selectedHistoryId = null },
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoryList(
+    padding: PaddingValues,
+    history: List<InstallHistoryEntry>,
+    selectionIds: Set<String>,
+    selectableIds: Set<String>,
+    onToggleSelection: (String) -> Unit,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
+    onEntryClick: (InstallHistoryEntry) -> Unit,
+    onDeleteSelected: () -> Unit,
+) {
+    val view = LocalView.current
+    val selecting = selectionIds.isNotEmpty()
+    Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                top = 20.dp,
+                end = 20.dp,
+                bottom = 96.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.history_title),
+                            style = MaterialTheme.typography.headlineLarge,
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = selecting,
+                        enter = fadeIn() + scaleIn(initialScale = 0.9f),
+                        exit = fadeOut() + scaleOut(targetScale = 0.9f),
+                    ) {
+                        Row {
+                            IconButton(onClick = {
+                                clickHaptic(view)
+                                onSelectAll()
+                            }) {
+                                Icon(
+                                    Icons.Rounded.SelectAll,
+                                    contentDescription = stringResource(R.string.history_select_all),
+                                )
+                            }
+                            IconButton(onClick = {
+                                clickHaptic(view)
+                                onClearSelection()
+                            }) {
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.history_clear_selection),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (history.isEmpty()) {
+                item { EmptyHistoryCard() }
+>>>>>>> acd8def (UI 接入：手动选 payload/su + 检查 SU 状态入口)
             } else {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
