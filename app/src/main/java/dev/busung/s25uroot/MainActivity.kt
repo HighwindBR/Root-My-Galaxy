@@ -1657,6 +1657,18 @@ private fun SettingsPage(
                     onAdvancedModeChanged(it)
                 },
             )
+			
+            SettingsSwitchCard(
+                icon = Icons.Rounded.Security,
+                title = stringResource(R.string.disable_ksu_modules),
+                description = stringResource(R.string.disable_ksu_modules_description),
+                checked = disableKsuModules,
+                position = SettingsCardPosition.Bottom,
+                onCheckedChange = {
+                    clickHaptic(view)
+                    onDisableKsuModulesChanged(it)
+                },
+            )
         }
         item { SectionLabel(stringResource(R.string.about)) }
         item {
