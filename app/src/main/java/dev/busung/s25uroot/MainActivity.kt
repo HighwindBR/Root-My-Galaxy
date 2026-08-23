@@ -164,6 +164,7 @@ class MainActivity : ComponentActivity() {
     private var accentColor by mutableStateOf(AccentColor.Dynamic)
     private var themeMode by mutableStateOf(AppThemeMode.System)
     private var advancedMode by mutableStateOf(false)
+    private var disableKsuModules by mutableStateOf(false)
     private var shizukuMode by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -173,6 +174,7 @@ class MainActivity : ComponentActivity() {
         accentColor = AppPreferences.accentColor(this)
         themeMode = AppPreferences.themeMode(this)
         advancedMode = AppPreferences.advancedMode(this)
+        disableKsuModules = AppPreferences.disableKsuModules(this)
         shizukuMode = AppPreferences.shizukuMode(this)
         setContent {
             RootMyGalaxyTheme(accentColor = accentColor, themeMode = themeMode) {
@@ -182,6 +184,7 @@ class MainActivity : ComponentActivity() {
                     themeMode = themeMode,
                     advancedMode = advancedMode,
                     shizukuMode = shizukuMode,
+                    disableKsuModules = disableKsuModules,
                     onAccentColorChanged = { color ->
                         AppPreferences.setAccentColor(this, color)
                         accentColor = color
@@ -194,6 +197,10 @@ class MainActivity : ComponentActivity() {
                         AppPreferences.setAdvancedMode(this, enabled)
                         advancedMode = enabled
                     },
+                    onDisableKsuModulesChanged = { enabled ->
+						AppPreferences.setDisableKsuModules(this, enabled)
+						disableKsuModules = enabled
+					},
                     onShizukuModeChanged = { enabled ->
                         AppPreferences.setShizukuMode(this, enabled)
                         shizukuMode = enabled
@@ -278,10 +285,12 @@ private fun RootApp(
     accentColor: AccentColor,
     themeMode: AppThemeMode,
     advancedMode: Boolean,
+    disableKsuModules: Boolean,
     shizukuMode: Boolean,
     onAccentColorChanged: (AccentColor) -> Unit,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onAdvancedModeChanged: (Boolean) -> Unit,
+    onDisableKsuModulesChanged: (Boolean) -> Unit,
     onShizukuModeChanged: (Boolean) -> Unit,
     openInstaller: (String?) -> Unit,
 ) {
@@ -516,6 +525,7 @@ private fun RootApp(
                     accentColor = accentColor,
                     themeMode = themeMode,
                     advancedMode = advancedMode,
+                    disableKsuModules = disableKsuModules,
                     shizukuMode = shizukuMode,
                     updateStatus = updateStatus,
                     onCheckForUpdate = checkForUpdate,
@@ -523,6 +533,7 @@ private fun RootApp(
                     onAccentColorChanged = onAccentColorChanged,
                     onThemeModeChanged = onThemeModeChanged,
                     onAdvancedModeChanged = onAdvancedModeChanged,
+                    onDisableKsuModulesChanged = onDisableKsuModulesChanged,
                     onShizukuModeChanged = onShizukuModeChanged,
                 )
             }
@@ -1475,6 +1486,7 @@ private fun SettingsPage(
     accentColor: AccentColor,
     themeMode: AppThemeMode,
     advancedMode: Boolean,
+    disableKsuModules: Boolean,
     shizukuMode: Boolean,
     updateStatus: UpdateStatus,
     onCheckForUpdate: () -> Unit,
@@ -1482,6 +1494,7 @@ private fun SettingsPage(
     onAccentColorChanged: (AccentColor) -> Unit,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onAdvancedModeChanged: (Boolean) -> Unit,
+    onDisableKsuModulesChanged: (Boolean) -> Unit,
     onShizukuModeChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
