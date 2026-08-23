@@ -1,281 +1,181 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Root My Galaxy</string>
-
-    <!-- Navigation -->
-    <string name="nav_overview">Overview</string>
+    <string name="nav_overview">Home</string>
     <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
-
-    <!-- About -->
-    <string name="about">About</string>
-    <string name="about_title">About</string>
-    <string name="about_description">KernelSU installer for supported Samsung Galaxy firmware.</string>
-    <string name="about_body">This app installs KernelSU on supported Samsung Galaxy devices using CVE-2026-43499.</string>
-    <string name="open_github">Open GitHub</string>
-
-    <!-- Device / Firmware / System -->
-    <string name="device">Device</string>
-    <string name="firmware">Firmware</string>
-    <string name="kernel">Kernel</string>
-    <string name="system">System</string>
-    <string name="system_abi">System ABI</string>
-    <string name="version_format">%1$s (%2$s)</string>
-
-    <!-- KernelSU Card -->
-    <string name="kernelsu_card_title">KernelSU</string>
-    <string name="kernelsu_card_description">Kernel-based root solution for Android.</string>
-
-    <!-- GitHub Card -->
-    <string name="github_card_title">GitHub</string>
-    <string name="github_card_description">View source code and releases.</string>
-
-    <!-- Install confirmation (MainActivity) -->
-    <string name="install_confirm_title">Confirm Installation</string>
-    <string name="install_confirm_body">This will install KernelSU on your device. Proceed?</string>
-    <string name="install_confirm_source">Source: %1$s</string>
-
-    <!-- Install screen (InstallActivity / InstallViewModel) -->
-    <string name="install_title">Installing KernelSU</string>
-    <string name="install_preparing">Preparing…</string>
-    <string name="install_live_progress">%1$d%%</string>
-    <string name="install_keep_open">Keep this screen open during installation.</string>
-    <string name="install_tap_start">Tap to start</string>
-    <string name="install_tap_manager">Open KernelSU Manager</string>
-    <string name="install_tap_open_manager">Open Manager</string>
-    <string name="install_tap_retry">Retry</string>
-
-    <!-- Install phases (InstallActivity when expression) -->
-    <string name="install_phase_checking">Checking device…</string>
-    <string name="install_phase_downloading">Downloading payload…</string>
-    <string name="install_phase_exploiting">Running exploit…</string>
-    <string name="install_phase_loading_ksu">Loading KernelSU…</string>
-    <string name="install_phase_installed">Installed</string>
-    <string name="install_phase_failed">Failed</string>
-    <string name="install_phase_ready">Ready</string>
-
-    <!-- Phase labels (InstallViewModel / phase strings) -->
-    <string name="phase_ready">Ready</string>
-    <string name="phase_checking">Checking…</string>
-    <string name="phase_downloading">Downloading…</string>
-    <string name="phase_exploiting">Exploiting…</string>
-    <string name="phase_loading_ksu">Loading KernelSU…</string>
-    <string name="phase_installed">Installed</string>
-    <string name="phase_failed">Failed</string>
-
-    <!-- Status strings (BootInstallService / InstallViewModel) -->
-    <string name="status_checking_github">Checking GitHub…</string>
-    <string name="status_exploit_running">Exploit running…</string>
-    <string name="status_ksu_loading">Loading KernelSU…</string>
-    <string name="status_ksu_active">KernelSU active</string>
-    <string name="status_install_failed">Installation failed</string>
-    <string name="status_not_installed">Not installed</string>
-    <string name="status_downloading_payload">Downloading payload…</string>
-    <string name="status_staging_local_payload">Staging local payload…</string>
-    <string name="status_support_failed">Device not supported</string>
-    <string name="status_ksu_active_format">KernelSU v%1$s</string>
-
-    <!-- Actions -->
-    <string name="action_back">Back</string>
+    <string name="install_confirm_title">Install KernelSU?</string>
+    <string name="install_confirm_body">The app will verify the support profile, then download and run the exploit and KernelSU payload from GitHub.</string>
+    <string name="action_confirm">Confirm</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_close">Close</string>
-    <string name="action_confirm">Confirm</string>
-    <string name="action_continue">Continue</string>
+    <string name="action_retry">Try again</string>
     <string name="action_done">Done</string>
-    <string name="action_next">Next</string>
-    <string name="action_retry">Retry</string>
-    <string name="action_choose_exploit">Choose Exploit</string>
-    <string name="action_choose_exploit_again">Choose Again</string>
-    <string name="action_choose_kernelsu">Choose KernelSU</string>
-    <string name="action_download_shizuku">Download Shizuku</string>
-    <string name="action_use_local_payload">Use Local Payload</string>
-    <string name="action_use_online_payload">Use Online Payload</string>
-
-    <!-- Artifacts -->
-    <string name="artifact_exploit">exploit</string>
-    <string name="artifact_kernelsu">kernelsu</string>
-
-    <!-- Error strings -->
-    <string name="error_boot_id">Failed to read boot ID.</string>
-    <string name="error_exploit_stalled">Exploit stalled.</string>
-    <string name="error_exploit_timeout">Exploit timed out.</string>
-    <string name="error_helper_unavailable">Helper service unavailable.</string>
-    <string name="error_helper_timeout">Helper service timed out.</string>
-    <string name="error_ksu_stage">Failed to stage KernelSU.</string>
-    <string name="error_ksu_verify">Failed to verify KernelSU.</string>
-    <string name="error_local_payload_unavailable">Local payload unavailable.</string>
-    <string name="error_payload_exit">Payload exited unexpectedly.</string>
-    <string name="error_receipt">Failed to read install receipt.</string>
-    <string name="error_shizuku_permission">Shizuku permission denied.</string>
-    <string name="error_shizuku_stage">Failed to stage via Shizuku.</string>
-    <string name="error_shizuku_unavailable">Shizuku is not running.</string>
-    <string name="error_success_marker">Success marker not found.</string>
-
-    <!-- Log strings -->
-    <string name="log_bootstrap_root">Bootstrapping root…</string>
-    <string name="log_download_verified">Download verified.</string>
-    <string name="log_install_complete">Installation complete.</string>
-    <string name="log_kernelsu_source">KernelSU source: %1$s</string>
-    <string name="log_ksu_control_verified">KernelSU control verified.</string>
-    <string name="log_ksu_staged">KernelSU staged successfully.</string>
-    <string name="log_profile">Profile: %1$s</string>
-    <string name="log_profile_source">Profile source: %1$s</string>
-    <string name="log_reboot_userspace">Rebooting userspace…</string>
-    <string name="log_shizuku_permission">Shizuku permission granted.</string>
-    <string name="log_shizuku_prepare">Preparing Shizuku…</string>
-
-    <!-- Repository strings -->
-    <string name="repo_commit_invalid">Invalid commit hash.</string>
-    <string name="repo_downloading">Downloading %1$s…</string>
-    <string name="repo_finalize_failed">Failed to finalize download.</string>
-    <string name="repo_importing">Importing %1$s…</string>
-    <string name="repo_incomplete">Download incomplete (%1$d / %2$d bytes).</string>
-    <string name="repo_local_open_failed">Failed to open local file.</string>
-    <string name="repo_no_profile">No matching profile found.</string>
-    <string name="repo_profile_missing">Profile file missing.</string>
-    <string name="repo_response_too_large">Server response too large.</string>
-    <string name="repo_size_exceeded">File size limit exceeded.</string>
-    <string name="repo_size_mismatch">File size mismatch.</string>
-    <string name="repo_url_invalid">Invalid download URL.</string>
-    <string name="repo_verified">%1$s verified.</string>
-
-    <!-- Payload source -->
-    <string name="payload_source_local">Local</string>
-    <string name="payload_source_remote">Remote</string>
-    <string name="local_payload_display_name">Local Payload</string>
-    <string name="local_payload_exploit_required">An exploit file is required for local payload mode.</string>
-    <string name="local_exploit_selected">Exploit selected: %1$s</string>
-    <string name="local_kernelsu_selected">KernelSU selected: %1$s</string>
-    <string name="local_kernelsu_optional">KernelSU (optional): none selected</string>
-
-    <!-- Device selection -->
-    <string name="select_device_title">Select Device</string>
-    <string name="select_device_description">Choose the target device profile for installation.</string>
-    <string name="no_matching_devices">No matching devices found.</string>
-    <string name="show_my_device_only">Show my device only</string>
-
-    <!-- Device / kernel mismatch -->
-    <string name="device_mismatch_title">Device Mismatch</string>
-    <string name="device_mismatch_body">The selected profile does not match this device.</string>
-    <string name="kernel_version_mismatch_title">Kernel Version Mismatch</string>
-    <string name="kernel_version_mismatch_body">The kernel version does not match the expected version for this profile.</string>
-
-    <!-- Local file pickers -->
-    <string name="select_local_exploit_title">Select Exploit File</string>
-    <string name="select_local_exploit_body">Choose the exploit payload (.bin or .zip) from storage.</string>
-    <string name="select_local_kernelsu_title">Select KernelSU File</string>
-    <string name="select_local_kernelsu_body">Choose the KernelSU image from storage (optional).</string>
-
-    <!-- Shizuku not running -->
-    <string name="shizuku_not_running_title">Shizuku Not Running</string>
-    <string name="shizuku_not_running_body">Shizuku must be running to use this mode. Please start Shizuku and try again.</string>
-
-    <!-- Steps (MainScreen overview) -->
-    <string name="step_download_title">Download</string>
-    <string name="step_download_detail">Downloading payload…</string>
-    <string name="step_support_title">Checking Support</string>
-    <string name="step_support_detail">Verifying device compatibility…</string>
-    <string name="step_exploit_title">Exploit</string>
-    <string name="step_exploit_detail">Running kernel exploit…</string>
-    <string name="step_ksu_title">KernelSU</string>
-    <string name="step_ksu_detail">Installing KernelSU module…</string>
-
-    <!-- How It Works -->
-    <string name="how_it_works">How It Works</string>
-
-    <!-- History -->
-    <string name="history_title">History</string>
-    <string name="history_empty_title">No history yet</string>
-    <string name="history_empty_description">Completed installations will appear here.</string>
-    <string name="history_detail_title">Installation Detail</string>
-    <string name="history_log">Log</string>
-    <string name="history_log_empty">No log output.</string>
-    <string name="history_payload">Payload</string>
-    <string name="history_started">Started</string>
-    <string name="history_completed">Completed</string>
-    <string name="history_succeeded">Succeeded</string>
-    <string name="history_failed">Failed</string>
-    <string name="history_running">Running</string>
-    <string name="history_delete">Delete</string>
-    <string name="history_delete_selected">Delete Selected</string>
-    <string name="history_select_all">Select All</string>
-    <string name="history_clear_selection">Clear Selection</string>
-    <string name="history_shizuku_used">Shizuku used</string>
-    <string name="history_shizuku_not_used">Shizuku not used</string>
-
-    <!-- Settings -->
+    <string name="action_back">Back</string>
+    <string name="install_tap_manager">Tap to install KernelSU Manager</string>
+    <string name="install_tap_open_manager">Tap to open KernelSU Manager</string>
+    <string name="install_tap_retry">Tap to try again</string>
+    <string name="install_tap_start">Tap to install KernelSU</string>
+    <string name="device">Device</string>
+    <string name="how_it_works">How it works</string>
+    <string name="kernelsu_card_title">KernelSU</string>
+    <string name="kernelsu_card_description">A kernel-based root solution for Android</string>
+    <string name="firmware">Firmware</string>
+    <string name="system">System</string>
+    <string name="kernel">Kernel</string>
+    <string name="system_abi">System ABI</string>
     <string name="settings">Settings</string>
-    <string name="advanced">Advanced</string>
-    <string name="advanced_mode">Advanced Mode</string>
-    <string name="advanced_mode_description">Enable additional options for experienced users.</string>
-    <string name="shizuku_mode">Shizuku Mode</string>
-    <string name="shizuku_mode_description">Use Shizuku for privileged operations.</string>
-    <string name="settings_reboot_after_install">Reboot After Install</string>
-    <string name="settings_reboot_after_install_description">Automatically reboot the device after a successful installation.</string>
-
-    <!-- Local Payload -->
-    <string name="local_payload_mode">Local Payload Mode</string>
-    <string name="local_payload_mode_description">Use a locally stored payload file instead of downloading.</string>
-    <string name="local_payload_card_title">Local Payload</string>
-    <string name="local_payload_card_description">Select a payload file from device storage.</string>
-
-    <!-- Appearance -->
+    <string name="version_format">%1$s (%2$d)</string>
+    <string name="language">Language</string>
+    <string name="language_description">Choose the app language</string>
     <string name="appearance">Appearance</string>
-    <string name="material_color">Material Color</string>
-    <string name="material_color_description">Choose the accent color for the app.</string>
-    <string name="color_dynamic">Dynamic</string>
-    <string name="color_blue">Blue</string>
-    <string name="color_green">Green</string>
-    <string name="color_orange">Orange</string>
-    <string name="color_violet">Violet</string>
-
-    <!-- Theme -->
-    <string name="theme_system">System default</string>
+    <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="material_color">Theme</string>
+    <string name="material_color_description">Change the look</string>
+    <string name="language_system">Follow system</string>
+    <string name="language_korean" translatable="false">한국어</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="language_japanese" translatable="false">日本語</string>
+    <string name="language_chinese" translatable="false">简体中文</string>
+    <string name="language_chinese_traditional" translatable="false">繁體中文</string>
+    <string name="language_turkish" translatable="false">Türkçe</string>
+    <string name="language_brazillian_portuguese" translatable="false">Português Brasileiro</string>
+    <string name="language_russian" translatable="false">Русский</string>
+    <string name="language_vietnamese" translatable="false">Tiếng Việt</string>
+    <string name="language_uzbek" translatable="false">O\'zbek</string>
+    <string name="color_dynamic">System dynamic</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_violet">Violet</string>
+    <string name="color_green">Green</string>
+    <string name="color_orange">Orange</string>
+    <string name="history_title">Run history</string>
+    <string name="history_empty_title">No runs yet</string>
+    <string name="history_empty_description">Installation results and logs will appear here.</string>
+    <string name="history_running">Running</string>
+    <string name="history_succeeded">Succeeded</string>
+    <string name="history_failed">Failed</string>
+    <string name="history_detail_title">Run details</string>
+    <string name="history_started">Started: %1$s</string>
+    <string name="history_completed">Completed: %1$s</string>
+    <string name="history_log_empty">No log output yet.</string>
+    <string name="history_payload">Payload: %1$s</string>
+    <string name="history_shizuku_used">Shizuku: used</string>
+    <string name="history_shizuku_not_used">Shizuku: not used</string>
+    <string name="export_log">Export log</string>
+    <string name="export_log_saved">Log saved</string>
+    <string name="export_log_failed">Unable to save the log</string>
+    <string name="about">About</string>
+    <string name="about_title">About Root My Galaxy</string>
+    <string name="about_description">About Root My Galaxy</string>
+    <string name="about_body">One-click installer that uses a kernel exploit to root supported Samsung Galaxy devices.</string>
 
-    <!-- Language -->
-    <string name="language">Language</string>
-    <string name="language_description">Select the display language.</string>
-    <string name="language_system">System default</string>
-    <string name="language_english">English</string>
-    <string name="language_japanese">Japanese</string>
-    <string name="language_korean">Korean</string>
-    <string name="language_brazillian_portuguese">Brazilian Portuguese</string>
-    <string name="language_chinese">Chinese (Simplified)</string>
-    <string name="language_chinese_traditional">Chinese (Traditional)</string>
-    <string name="language_russian">Russian</string>
-    <string name="language_turkish">Turkish</string>
-    <string name="language_uzbek">Uzbek</string>
-    <string name="language_vietnamese">Vietnamese</string>
+    <string name="install_title">Install</string>
+    <string name="install_keep_open">Keep this screen open until installation finishes</string>
+    <string name="install_live_progress">Log</string>
+    <string name="install_preparing">Preparing…</string>
+    <string name="step_support_title">Support check</string>
+    <string name="step_support_detail">Verify device and firmware profile</string>
+    <string name="step_download_title">Download</string>
+    <string name="step_download_detail">Load the support manifest</string>
+    <string name="step_exploit_title">Kernel exploit</string>
+    <string name="step_exploit_detail">Acquire bootstrap root</string>
+    <string name="step_ksu_title">Load KernelSU</string>
+    <string name="step_ksu_detail">Late-load module and verify control channel</string>
+    <string name="phase_checking">Checking the supported device and firmware</string>
+    <string name="phase_ready">Ready to install</string>
+    <string name="phase_downloading">Downloading commit-pinned payloads from GitHub</string>
+    <string name="phase_exploiting">This may take 10 minutes or longer. Your device may become hot or stop responding.</string>
+    <string name="phase_loading_ksu">Loading KernelSU with the acquired bootstrap root</string>
+    <string name="phase_installed">KernelSU module and control channel verified</string>
+    <string name="phase_failed">Review the failure point in the log below</string>
 
-    <!-- Export Log -->
-    <string name="export_log">Export Log</string>
-    <string name="export_log_saved">Log saved to %1$s</string>
-    <string name="export_log_failed">Failed to export log.</string>
+    <string name="status_ksu_active">KernelSU active</string>
+    <string name="status_not_installed">Not installed</string>
+    <string name="status_support_failed">Support check failed</string>
+    <string name="status_checking_github">Checking GitHub support manifest</string>
+    <string name="status_downloading_payload">Downloading payloads</string>
+    <string name="status_exploit_running">Running kernel exploit</string>
+    <string name="status_ksu_loading">Late-loading KernelSU</string>
+    <string name="status_install_failed">Installation failed</string>
+    <string name="log_profile">[+] Support profile: %1$s</string>
+    <string name="log_download_verified">[+] Payload download complete</string>
+    <string name="log_install_complete">[+] Installation complete</string>
+    <string name="log_bootstrap_root">[+] Bootstrap root acquired</string>
+    <string name="log_ksu_staged">[+] KernelSU staging complete</string>
+    <string name="log_ksu_control_verified">[+] KernelSU control channel verified</string>
+    <string name="error_helper_unavailable">The bootstrap helper is not executable</string>
+    <string name="error_exploit_stalled">The exploit log did not advance for 90 seconds</string>
+    <string name="error_exploit_timeout">The exploit exceeded the 15-minute limit</string>
+    <string name="error_payload_exit">Payload execution failed: %1$d%2$s</string>
+    <string name="error_success_marker">Exploit success markers were not found</string>
+    <string name="error_ksu_stage">KernelSU staging failed: %1$s</string>
+    <string name="error_ksu_verify">KernelSU late-load or control verification failed (rc=%1$d): %2$s</string>
+    <string name="error_boot_id">Unable to read the current boot_id</string>
+    <string name="error_receipt">Unable to save the installation verification receipt</string>
 
-    <!-- Updater -->
+    <string name="artifact_exploit">exploit</string>
+    <string name="artifact_kernelsu">KernelSU</string>
+    <string name="repo_no_profile">No compatible payload supports this model and kernel version</string>
+    <string name="repo_downloading">Downloading %1$s</string>
+    <string name="repo_size_mismatch">%1$s size does not match the support manifest</string>
+    <string name="repo_size_exceeded">%1$s exceeded the declared size</string>
+    <string name="repo_incomplete">%1$s download is incomplete</string>
+    <string name="repo_finalize_failed">Unable to finalize the %1$s file</string>
+    <string name="repo_verified">%1$s verified</string>
+    <string name="repo_commit_invalid">GitHub returned an invalid commit SHA</string>
+    <string name="repo_url_invalid">The artifact repository is not allowed</string>
+    <string name="repo_response_too_large">The response exceeded its size limit</string>
+    <string name="open_github">Open GitHub</string>
+    <string name="github_card_title">Explore Root My Galaxy</string>
+    <string name="github_card_description">View the source code and usage instructions.</string>
+    <string name="action_continue">Continue anyway</string>
+    <string name="action_next">Next</string>
+    <string name="advanced">Advanced</string>
+    <string name="advanced_mode">Advanced mode</string>
+    <string name="advanced_mode_description">Manually choose a device-compatible payload during installation</string>
+    <string name="disable_ksu_modules">Disable KSU Modules</string>
+	<string name="disable_ksu_modules_description">Temporarily disable KernelSU modules before loading KernelSU</string>
+    <string name="shizuku_mode">Use Shizuku</string>
+    <string name="shizuku_mode_description">Use Shizuku to run the payload. This can improve reliability.</string>
+    <string name="shizuku_not_running_title">Shizuku is not running</string>
+    <string name="shizuku_not_running_body">Start the Shizuku service with adb or root and grant this app permission, then enable this option.</string>
+    <string name="action_download_shizuku">Download Shizuku</string>
+    <string name="error_shizuku_unavailable">Shizuku is not running. Start Shizuku with adb or root first.</string>
+    <string name="error_shizuku_permission">Shizuku permission was not granted</string>
+    <string name="error_shizuku_stage">Unable to stage %1$s through Shizuku: %2$s</string>
+    <string name="log_shizuku_prepare">[*] Preparing Shizuku execution</string>
+    <string name="log_shizuku_permission">[+] Shizuku permission granted</string>
+    <string name="repo_profile_missing">Support profile %1$s is no longer available</string>
+    <string name="select_device_title">Choose a payload</string>
+    <string name="select_device_description">Select a payload by device model and kernel version.</string>
+    <string name="show_my_device_only">Show only my device</string>
+    <string name="no_matching_devices">No payloads match this model and kernel version.</string>
+    <string name="device_mismatch_title">Device mismatch</string>
+    <string name="device_mismatch_body">This phone is %1$s, but the selected payload supports %2$s. Running it may crash or damage the device.</string>
+    <string name="kernel_version_mismatch_title">Kernel version mismatch</string>
+    <string name="kernel_version_mismatch_body">This phone uses kernel %1$s, but the selected payload supports %2$s. Offsets may be incompatible.</string>
+    <string name="updater_available_title">An update is available</string>
+    <string name="updater_available_body">Version %1$s is now available</string>
+    <string name="updater_available_body_short">%1$s is available</string>
+    <string name="updater_button_download">Download &amp; Install</string>
+    <string name="updater_downloading">Downloading…</string>
+    <string name="updater_download_failed">Download failed</string>
     <string name="updater_check">Check for updates</string>
     <string name="updater_checking">Checking for updates…</string>
-    <string name="updater_up_to_date">App is up to date.</string>
-    <string name="updater_available_title">Update Available</string>
-    <string name="updater_available_body">A new version (%1$s) is available. Download now?</string>
-    <string name="updater_available_body_short">Version %1$s available</string>
-    <string name="updater_button_download">Download</string>
-    <string name="updater_downloading">Downloading update…</string>
-    <string name="updater_download_failed">Failed to download update.</string>
-    <string name="updater_failed">Update check failed.</string>
-
-    <!-- Notification channel (BootInstallService) -->
-    <string name="notification_channel_boot">Boot Install</string>
-
-    <!-- Plurals -->
+    <string name="updater_up_to_date">You\'re up to date</string>
+    <string name="updater_failed">Failed to check for updates</string>
+    <string name="history_delete">Delete</string>
+    <string name="history_select_all">Select all</string>
+    <string name="history_clear_selection">Clear selection</string>
+    <string name="history_delete_selected">Delete (%1$d)</string>
     <plurals name="history_delete_selected_title">
-        <item quantity="one">Delete %1$d item?</item>
-        <item quantity="other">Delete %1$d items?</item>
+        <item quantity="one">Delete this run?</item>
+        <item quantity="other">Delete %1$d runs?</item>
     </plurals>
     <plurals name="history_delete_selected_body">
-        <item quantity="one">This will permanently remove %1$d history entry.</item>
-        <item quantity="other">This will permanently remove %1$d history entries.</item>
+        <item quantity="one">This run and its log will be permanently removed.</item>
+        <item quantity="other">These runs and their logs will be permanently removed.</item>
     </plurals>
 </resources>
