@@ -314,7 +314,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             if (!requiresFreshP0Session) cacheP0Offset(bootToken, rawLog)
             publishExploitLog(logPrefix, rawLog)
             val earlyOutput = if (shizuku) {
-                readProcessOutput(process, shizuku).trim()
+                drainProcessOutput(process, captured).trim()
             } else {
                 earlyOutputBuf.toString().trim()
             }
@@ -363,7 +363,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     // lmkd, Samsung background kill) they are killed with it and the kernel
     // panics on the freed pages. Move them to a private cgroup so they
     // outlive the app.
-    private fun hardenKeeper() {
+    private suspend fun hardenKeeper() {
         val keepers = keeperPids()
         if (keepers.isEmpty()) {
             appendLog("[*] no stability keeper found")
@@ -402,7 +402,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         updateHistoryLog()
     }
 
-    private fun installKernelSu(payloads: VerifiedPayloads) {
+    private suspend fun installKernelSu(payloads: VerifiedPayloads) {
         startKernelLogCapture()
         if (shizukuEnabled()) {
             shizukuStage(payloads.kernelSu, SHIZUKU_KSUD_PATH, "755")
@@ -428,7 +428,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         appendLog(app.getString(R.string.log_ksu_control_verified))
     }
 
-    private fun startKernelLogCapture() {
+    private suspend fun startKernelLogCapture() {
         val command =
             "rm -f /data/local/tmp/dmesg-capture.log /data/local/tmp/dmesg-capture.meta; " +
                 "(dmesg -w > /data/local/tmp/dmesg-capture.log 2>&1 &); " +
@@ -631,6 +631,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "120"
         private const val EXPLOIT_STALL_MILLIS = 90_000L
         private const val EXPLOIT_TOTAL_MILLIS = 900_000L
+        private const val HELPER_TIMEOUT_MILLIS = 30_000L
         private const val MAX_EARLY_OUTPUT_BYTES = 64 * 1024
         private val KEEPER_COMMS = setOf("cve43499-hold", "cve43499-p0ref")
         private const val KEEPER_CGROUP = "/sys/fs/cgroup/rmg-hold"
