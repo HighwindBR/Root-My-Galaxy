@@ -157,6 +157,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     private val installViewModel by viewModels<InstallViewModel>()
@@ -258,11 +259,13 @@ private val languageOptions = listOf(
 )
 
 private const val KERNEL_SU_MANAGER_URL =
-    "https://github.com/tiann/KernelSU/releases/download/v3.2.5/KernelSU_v3.2.5_32525-release.apk"
+    "https://github.com/tiann/KernelSU/releases/latest"
 private const val KERNEL_SU_MANAGER_PACKAGE = "me.weishu.kernelsu"
 private const val KERNEL_SU_HOME_URL = "https://kernelsu.org/"
 private const val SHIZUKU_MANAGER_PACKAGE = "moe.shizuku.manager"
 private const val SHIZUKU_MANAGER_URL = "https://github.com/thedjchi/Shizuku/releases/"
+private const val KERNEL_SU_MANAGER_API_URL =
+    "https://api.github.com/repos/tiann/KernelSU/releases/latest"
 
 private fun isKernelSuManagerInstalled(context: Context): Boolean =
     context.packageManager.getLaunchIntentForPackage(KERNEL_SU_MANAGER_PACKAGE) != null
@@ -272,7 +275,38 @@ private fun openKernelSuManager(context: Context) {
     if (launch != null) {
         context.startActivity(launch)
     } else {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(KERNEL_SU_MANAGER_URL)))
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val connection = java.net.URL(KERNEL_SU_MANAGER_API_URL).openConnection() as java.net.HttpURLConnection
+                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.setRequestProperty("User-Agent", context.packageName)
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                val release = org.json.JSONObject(body)
+                val assets = release.getJSONArray("assets")
+
+                var apkUrl: String? = null
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    val name = asset.optString("name")
+                    if (name.endsWith(".apk", ignoreCase = true)) {
+                        apkUrl = asset.optString("browser_download_url")
+                        break
+                    }
+                }
+
+                val targetUrl = apkUrl ?: KERNEL_SU_MANAGER_URL
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                }
+            } catch (_: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(KERNEL_SU_MANAGER_URL)))
+                }
+            }
+        }
     }
 }
 
