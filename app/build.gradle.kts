@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "dev.busung.s25uroot"
-    compileSdk = 37
+    compileSdkPreview = "CinnamonBun"
 
     defaultConfig {
         applicationId = "dev.busung.s25uroot"
         minSdk = 33
-        targetSdk = 36
+        targetSdkPreview = "CinnamonBun"
         versionCode = 13
         versionName = "0.2.65"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
