@@ -35,7 +35,7 @@ jobs:
           sdkmanager \
             "platform-tools" \
             "platforms;android-36" \
-            "build-tools;37.0.0" \
+            "build-tools;36.0.0" \
             "cmake;3.22.1"
       
       - name: Setup NDK
@@ -45,8 +45,8 @@ jobs:
       
       - name: Verify Android SDK
         run: |
-          test -d "${ANDROID_HOME}/platforms/android-37"
-          test -d "${ANDROID_HOME}/build-tools/37.0.0"
+          test -d "${ANDROID_HOME}/platforms/android-36"
+          test -d "${ANDROID_HOME}/build-tools/36.0.0"
           test -d "${ANDROID_HOME}/cmake/3.22.1"
 
       - name: Set up Gradle
