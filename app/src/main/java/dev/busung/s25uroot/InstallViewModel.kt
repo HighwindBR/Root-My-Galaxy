@@ -195,7 +195,8 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 appendLog(app.getString(R.string.log_download_verified))
 
                 setPhase(InstallPhase.Exploiting, app.getString(R.string.status_exploit_running))
-                executeExploit(payloads.exploit)
+                executeExploit(payloads.exploit, payloads.profile.requiresFreshP0Session)
+                hardenKeeper()
 
                 setPhase(InstallPhase.LoadingKernelSu, app.getString(R.string.status_ksu_loading))
                 installKernelSu(payloads)
@@ -213,7 +214,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private suspend fun executeExploit(payload: File) {
+    private suspend fun executeExploit(payload: File, requiresFreshP0Session: Boolean) {
         val shizuku = shizukuEnabled()
         val logFile = if (shizuku) File(SHIZUKU_LOG_PATH) else File(app.filesDir, "exploit.log")
         if (shizuku) {
@@ -231,7 +232,12 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             val stagedPayload = shizukuStage(payload, SHIZUKU_PAYLOAD_PATH, "755")
             ShizukuController.exec(
                 arrayOf("/system/bin/sh", "-c", "true"),
-                shizukuEnvironment(bootToken, stagedPayload.absolutePath, helper.absolutePath),
+                shizukuEnvironment(
+                    bootToken,
+                    stagedPayload.absolutePath,
+                    helper.absolutePath,
+                    requiresFreshP0Session,
+                ),
             )
         } else {
             val processBuilder = ProcessBuilder(
@@ -245,7 +251,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 put("EXPLOIT_ATTEMPTS", EXPLOIT_ATTEMPTS)
                 put("P0_ATTEMPT_TIMEOUT_SEC", P0_ATTEMPT_TIMEOUT_SEC)
                 put("EXPLOIT_ATTEMPT_TIMEOUT_SEC", EXPLOIT_ATTEMPT_TIMEOUT_SEC)
-                cachedP0Offset(bootToken)?.let { put(P0_OFFSET_ENV, it) }
+                // Fresh-P0 payloads refuse a forced/retained cross-process slide, so
+                // a cached offset only guarantees a failed run. Don't feed it.
+                if (!requiresFreshP0Session) {
+                    cachedP0Offset(bootToken)?.let { put(P0_OFFSET_ENV, it) }
+                }
             }
             processBuilder.start()
         }
@@ -259,6 +269,23 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             { drainProcessOutput(process, captured); logFile.readTextIfPresent() }
         }
 
+        // Drain stdout continuously: the helper relays the full exploit log to
+        // its stdout pipe, which would otherwise fill (~64KB) and block the
+        // helper from exiting even after a successful exploit.
+        val earlyOutputBuf = StringBuilder()
+        val drainThread: Thread? = if (shizuku) null else Thread {
+            try {
+                process.inputStream.bufferedReader().forEachLine { line ->
+                    if (earlyOutputBuf.length < MAX_EARLY_OUTPUT_BYTES) {
+                        earlyOutputBuf.append(line).append('\n')
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+        drainThread?.isDaemon = true
+        drainThread?.start()
+
         try {
             val startedAt = SystemClock.elapsedRealtime()
             var lastProgressAt = startedAt
@@ -266,7 +293,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             while (process.isAlive) {
                 val rawLog = readLog()
                 if (rawLog != lastRawLog) {
-                    cacheP0Offset(bootToken, rawLog)
+                    if (!requiresFreshP0Session) cacheP0Offset(bootToken, rawLog)
                     publishExploitLog(logPrefix, rawLog)
                     lastRawLog = rawLog
                     lastProgressAt = SystemClock.elapsedRealtime()
@@ -282,12 +309,15 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             }
 
             val exitCode = process.waitFor()
+            drainThread?.join(2_000)
             val rawLog = readLog()
-            cacheP0Offset(bootToken, rawLog)
+            if (!requiresFreshP0Session) cacheP0Offset(bootToken, rawLog)
             publishExploitLog(logPrefix, rawLog)
-            // Both transports drain into `captured` during the poll loop, so
-            // this never blocks on a child still holding the pipe open.
-            val earlyOutput = captured.toString().trim()
+            val earlyOutput = if (shizuku) {
+                drainProcessOutput(process, captured).trim()
+            } else {
+                earlyOutputBuf.toString().trim()
+            }
             require(exitCode == 0) {
                 app.getString(
                     R.string.error_payload_exit,
@@ -327,6 +357,42 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // The payload leaves two keeper forks retaining exploited pages:
+    // cve43499-hold retains the reclaimed kernel pages, cve43499-p0ref the
+    // p0 pipe page. Both inherit the app cgroup: if the app dies (force-stop,
+    // lmkd, Samsung background kill) they are killed with it and the kernel
+    // panics on the freed pages. Move them to a private cgroup so they
+    // outlive the app.
+    private suspend fun hardenKeeper() {
+        val keepers = keeperPids()
+        if (keepers.isEmpty()) {
+            appendLog("[*] no stability keeper found")
+            return
+        }
+        keepers.forEach { pid ->
+            val command = "mkdir -p $KEEPER_CGROUP && echo $pid > $KEEPER_CGROUP/cgroup.procs"
+            val result = runHelper("-c", command)
+            val membership = runHelper("-c", "cat /proc/$pid/cgroup").output
+            appendLog(
+                if (result.code == 0 && membership.contains(KEEPER_CGROUP_NAME)) {
+                    "[*] keeper pid=$pid hardened ($KEEPER_CGROUP)"
+                } else {
+                    "[-] keeper pid=$pid hardening failed " +
+                        "code=${result.code} ${result.output.takeLast(120)}"
+                },
+            )
+        }
+    }
+
+    private fun keeperPids(): List<Int> = runCatching {
+        File("/proc").listFiles { file -> file.name.all(Char::isDigit) }.orEmpty()
+            .mapNotNull { dir ->
+                val pid = dir.name.toIntOrNull() ?: return@mapNotNull null
+                val comm = runCatching { File(dir, "comm").readText().trim() }.getOrNull()
+                if (comm in KEEPER_COMMS) pid else null
+            }
+    }.getOrDefault(emptyList())
+
     private fun publishExploitLog(prefix: String, rawLog: String) {
         mutableState.value = mutableState.value.copy(
             log = listOf(prefix, stripAnsi(rawLog))
@@ -337,6 +403,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun installKernelSu(payloads: VerifiedPayloads) {
+        startKernelLogCapture()
         if (shizukuEnabled()) {
             shizukuStage(payloads.kernelSu, SHIZUKU_KSUD_PATH, "755")
             shizukuStage(payloads.kernelSu, SHIZUKU_KSUD_STAGE_PATH, "755")
@@ -359,6 +426,18 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         if (lateLoad.output.isNotBlank()) appendLog(lateLoad.output)
         storeInstallReceipt()
         appendLog(app.getString(R.string.log_ksu_control_verified))
+    }
+
+    private suspend fun startKernelLogCapture() {
+        val command =
+            "rm -f /data/local/tmp/dmesg-capture.log /data/local/tmp/dmesg-capture.meta; " +
+                "(dmesg -w > /data/local/tmp/dmesg-capture.log 2>&1 &); " +
+                "{ date; id; cat /proc/self/attr/current; } > /data/local/tmp/dmesg-capture.meta 2>&1"
+        val result = runHelper("-c", command)
+        appendLog(
+            if (result.code == 0) "kernel log capture started"
+            else "kernel log capture failed code=${result.code} ${result.output.takeLast(120)}",
+        )
     }
 
     private fun detectInstalled(): Boolean {
@@ -438,13 +517,16 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         bootToken: String?,
         payloadPath: String,
         helperPath: String,
+        requiresFreshP0Session: Boolean,
     ): Array<String> = buildList {
         add("EXPLOIT_ATTEMPTS=$EXPLOIT_ATTEMPTS")
         add("P0_ATTEMPT_TIMEOUT_SEC=$P0_ATTEMPT_TIMEOUT_SEC")
         add("EXPLOIT_ATTEMPT_TIMEOUT_SEC=$EXPLOIT_ATTEMPT_TIMEOUT_SEC")
         add("CVE43499_ROOT_HELPER=$helperPath")
         add("LD_PRELOAD=$payloadPath")
-        cachedP0Offset(bootToken)?.let { add("$P0_OFFSET_ENV=$it") }
+        if (!requiresFreshP0Session) {
+            cachedP0Offset(bootToken)?.let { add("$P0_OFFSET_ENV=$it") }
+        }
     }.toTypedArray()
 
     /**
@@ -549,7 +631,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "120"
         private const val EXPLOIT_STALL_MILLIS = 90_000L
         private const val EXPLOIT_TOTAL_MILLIS = 900_000L
-        private const val HELPER_TIMEOUT_MILLIS = 120_000L
+        private const val HELPER_TIMEOUT_MILLIS = 30_000L
+        private const val MAX_EARLY_OUTPUT_BYTES = 64 * 1024
+        private val KEEPER_COMMS = setOf("cve43499-hold", "cve43499-p0ref")
+        private const val KEEPER_CGROUP = "/sys/fs/cgroup/rmg-hold"
+        private const val KEEPER_CGROUP_NAME = "rmg-hold"
         private const val INSTALL_RECEIPT = "install_receipt"
         private const val RECEIPT_BOOT_TOKEN = "kernel_boot_id"
         private const val RECEIPT_VERIFIED = "verified"
