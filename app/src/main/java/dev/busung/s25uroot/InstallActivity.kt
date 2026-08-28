@@ -47,9 +47,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -60,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.busung.s25uroot.ui.theme.RootMyGalaxyTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class InstallActivity : ComponentActivity() {
     private val installViewModel by viewModels<InstallViewModel>()
@@ -132,6 +138,9 @@ private fun clickHaptic(view: View) {
     )
 }
 
+/** States for the KSU Manager install button shown after a successful root. */
+private enum class ManagerInstallState { Idle, Downloading, Done, Failed }
+
 @Composable
 private fun InstallScreen(
     installState: InstallUiState,
@@ -140,6 +149,12 @@ private fun InstallScreen(
 ) {
     val logScrollState = rememberScrollState()
     val view = LocalView.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var managerState by remember { mutableStateOf(ManagerInstallState.Idle) }
+    var managerProgress by remember { mutableFloatStateOf(0f) }
+
     LaunchedEffect(installState.log) {
         delay(40)
         logScrollState.scrollTo(logScrollState.maxValue)
@@ -206,14 +221,77 @@ private fun InstallScreen(
                             Text(stringResource(R.string.action_retry))
                         }
                     } else if (installState.phase == InstallPhase.Installed) {
-                        Button(
-                            onClick = {
-                                clickHaptic(view)
-                                onClose()
-                            },
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Text(stringResource(R.string.action_done))
+                            // KernelSU Manager install button
+                            when (managerState) {
+                                ManagerInstallState.Idle -> {
+                                    Button(
+                                        onClick = {
+                                            clickHaptic(view)
+                                            managerState = ManagerInstallState.Downloading
+                                            scope.launch {
+                                                val ok = KernelSuManagerInstaller.downloadAndInstall(
+                                                    context,
+                                                    onProgress = { managerProgress = it },
+                                                )
+                                                managerState = if (ok) ManagerInstallState.Done
+                                                               else ManagerInstallState.Failed
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(stringResource(R.string.install_tap_manager))
+                                    }
+                                }
+                                ManagerInstallState.Downloading -> {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.updater_downloading),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        LinearProgressIndicator(
+                                            progress = { managerProgress },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+                                ManagerInstallState.Done -> {
+                                    Button(
+                                        onClick = {
+                                            clickHaptic(view)
+                                            KernelSuManagerInstaller.openReleasesPage(context)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(stringResource(R.string.install_tap_open_manager))
+                                    }
+                                }
+                                ManagerInstallState.Failed -> {
+                                    Button(
+                                        onClick = {
+                                            clickHaptic(view)
+                                            KernelSuManagerInstaller.openReleasesPage(context)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(stringResource(R.string.manager_install_failed_open))
+                                    }
+                                }
+                            }
+                            // Done / close button
+                            FilledTonalButton(
+                                onClick = {
+                                    clickHaptic(view)
+                                    onClose()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.action_done))
+                            }
                         }
                     }
                 }
