@@ -36,13 +36,12 @@ jobs:
         run: |
           sdkmanager --channel=3 \
             "platform-tools" \
-            "platforms;android-Baklava" \
+            "platforms;android-CinnamonBun" \
             "cmake;3.22.1"
 
       - name: Verify Android SDK
         run: |
-          test -d "${ANDROID_HOME}/platforms/android-37"
-          test -d "${ANDROID_HOME}/build-tools/37.0.0"
+          test -d "${ANDROID_HOME}/platforms/android-CinnamonBun"
           test -d "${ANDROID_HOME}/cmake/3.22.1"
 
       - name: Setup NDK
