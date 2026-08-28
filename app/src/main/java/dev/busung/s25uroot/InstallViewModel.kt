@@ -691,6 +691,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 kernelVersions = setOf(snapshot.kernelVersion),
                 exploit = RemoteArtifact("", -1L),
                 kernelSu = RemoteArtifact("", -1L),
+                requiresFreshP0Session = false,
             )
         }
 
