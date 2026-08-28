@@ -17,6 +17,7 @@
     <string name="install_tap_open_manager">Tap to open KernelSU Manager</string>
     <string name="install_tap_retry">Tap to retry</string>
     <string name="install_tap_start">Tap to install KernelSU</string>
+    <string name="manager_install_failed_open">Download failed — open GitHub releases</string>
     <string name="device">Device</string>
     <string name="how_it_works">How it works</string>
     <string name="kernelsu_card_title">KernelSU</string>
