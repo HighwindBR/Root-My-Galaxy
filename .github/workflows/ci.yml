@@ -21,30 +21,68 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
+          cache: gradle
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK command-line tools
         uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: true
 
-      - name: Install Android build dependencies
+      - name: Force-refresh SDK Manager repository metadata
         shell: bash
         run: |
-          sdkmanager --channel=3 \
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+
+          echo "Using sdkmanager: $SDKMANAGER"
+          "$SDKMANAGER" --version
+          "$SDKMANAGER" --update
+          yes | "$SDKMANAGER" --licenses
+
+      - name: Confirm Android API 37 is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+
+          "$SDKMANAGER" --list
+          "$SDKMANAGER" --list | grep -F "platforms;android-37"
+
+      - name: Install Android API 37 build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+
+          "$SDKMANAGER" --install \
             "platform-tools" \
-            "platforms;android-CinnamonBun" \
+            "platforms;android-37" \
             "cmake;3.22.1"
 
-      - name: Verify Android SDK
+      - name: Verify Android API 37 SDK
+        shell: bash
         run: |
-          test -d "${ANDROID_HOME}/platforms/android-CinnamonBun"
+          set -euo pipefail
+          test -f "${ANDROID_HOME}/platforms/android-37/android.jar"
           test -d "${ANDROID_HOME}/cmake/3.22.1"
 
-      - name: Setup NDK
+      - name: Set up NDK r28
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
