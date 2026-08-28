@@ -36,50 +36,54 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SDKMANAGER="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          mkdir -p "${HOME}/.android"
+          touch "${HOME}/.android/repositories.cfg"
 
-          if [[ ! -x "$SDKMANAGER" ]]; then
-            SDKMANAGER="$(command -v sdkmanager)"
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "${SDKMANAGER}" ]; then
+            SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
           fi
 
-          echo "Using sdkmanager: $SDKMANAGER"
-          "$SDKMANAGER" --version
-          "$SDKMANAGER" --update
-          yes | "$SDKMANAGER" --licenses
+          echo "Using sdkmanager: ${SDKMANAGER}"
+          "${SDKMANAGER}" --version || true
+          rm -rf "${ANDROID_HOME}/.knownPackages" \
+                 "${ANDROID_HOME}/temp" \
+                 "${HOME}/.android/cache" || true
+          "${SDKMANAGER}" --update || true
 
       - name: Confirm Android API 37 is available
         shell: bash
         run: |
           set -euo pipefail
-          SDKMANAGER="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-
-          if [[ ! -x "$SDKMANAGER" ]]; then
-            SDKMANAGER="$(command -v sdkmanager)"
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "${SDKMANAGER}" ]; then
+            SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
           fi
 
-          "$SDKMANAGER" --list
-          "$SDKMANAGER" --list | grep -F "platforms;android-37"
+          "${SDKMANAGER}" --channel=3 --list | tee sdkmanager-packages.txt
+          grep -E 'platforms;android-37|platforms;android-37-ext[0-9]+' sdkmanager-packages.txt
 
       - name: Install Android API 37 build dependencies
         shell: bash
         run: |
           set -euo pipefail
-          SDKMANAGER="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-
-          if [[ ! -x "$SDKMANAGER" ]]; then
-            SDKMANAGER="$(command -v sdkmanager)"
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "${SDKMANAGER}" ]; then
+            SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
           fi
 
-          "$SDKMANAGER" --install \
+          "${SDKMANAGER}" --channel=3 \
             "platform-tools" \
             "platforms;android-37" \
+            "build-tools;37.0.0" \
             "cmake;3.22.1"
 
       - name: Verify Android API 37 SDK
         shell: bash
         run: |
           set -euo pipefail
-          test -f "${ANDROID_HOME}/platforms/android-37/android.jar"
+          test -d "${ANDROID_HOME}/platforms/android-37"
+          test -d "${ANDROID_HOME}/build-tools/37.0.0"
           test -d "${ANDROID_HOME}/cmake/3.22.1"
 
       - name: Set up NDK r28
