@@ -34,8 +34,25 @@ class PayloadRepository(private val context: Context) {
         .firstOrNull { it.profileId == profileId }
         ?: error(context.getString(R.string.repo_profile_missing, profileId))
 
+    /**
+     * Downloads the exploit and KernelSU payloads for [profile].
+     *
+     * The KernelSU binary (ksud) is always resolved live from the latest
+     * tiann/KernelSU GitHub release via [KernelSuReleases.resolveKsud].
+     * If the API is unreachable the payload-repo artifact acts as a fallback,
+     * so offline / CI / sideload flows continue to work.
+     */
     fun download(profile: TargetProfile, onProgress: (String) -> Unit): VerifiedPayloads {
         val directory = File(context.filesDir, "payloads/${profile.profileId}").apply { mkdirs() }
+
+        // Resolve the latest upstream ksud; fall back to the payload-repo pin
+        // so the install always has something to work with.
+        val ksudArtifact = KernelSuReleases.resolveKsud()
+            ?.also { onProgress("[*] ksud resolved from tiann/KernelSU releases") }
+            ?: profile.kernelSu.also {
+                onProgress("[*] ksud: tiann/KernelSU API unavailable, using payload-repo pin")
+            }
+
         val exploit = downloadArtifact(
             profile.exploit,
             File(directory, "cve-2026-43499-app.so"),
@@ -43,7 +60,7 @@ class PayloadRepository(private val context: Context) {
             onProgress,
         )
         val kernelSu = downloadArtifact(
-            profile.kernelSu,
+            ksudArtifact,
             File(directory, "ksud-s25u-kdp"),
             context.getString(R.string.artifact_kernelsu),
             onProgress,
@@ -110,8 +127,15 @@ class PayloadRepository(private val context: Context) {
         onProgress(context.getString(R.string.repo_downloading, label))
         val temporary = File(destination.parentFile, "${destination.name}.part")
         val connection = open(artifact.url)
-        require(connection.contentLengthLong == -1L || connection.contentLengthLong == artifact.size) {
-            context.getString(R.string.repo_size_mismatch, label)
+        // When the artifact size in the manifest is -1 (live URL with unknown
+        // size) we skip the pre-flight length check and rely only on the
+        // post-download byte-count check below.
+        val expectedSize = artifact.size
+        if (expectedSize != -1L) {
+            require(
+                connection.contentLengthLong == -1L ||
+                    connection.contentLengthLong == expectedSize,
+            ) { context.getString(R.string.repo_size_mismatch, label) }
         }
         var total = 0L
         connection.inputStream.use { input ->
@@ -121,8 +145,10 @@ class PayloadRepository(private val context: Context) {
                     val count = input.read(buffer)
                     if (count < 0) break
                     total += count
-                    require(total <= artifact.size) {
-                        context.getString(R.string.repo_size_exceeded, label)
+                    if (expectedSize != -1L) {
+                        require(total <= expectedSize) {
+                            context.getString(R.string.repo_size_exceeded, label)
+                        }
                     }
                     output.write(buffer, 0, count)
                 }
@@ -130,7 +156,11 @@ class PayloadRepository(private val context: Context) {
             }
         }
         connection.disconnect()
-        require(total == artifact.size) { context.getString(R.string.repo_incomplete, label) }
+        if (expectedSize != -1L) {
+            require(total == expectedSize) { context.getString(R.string.repo_incomplete, label) }
+        } else {
+            require(total > 0L) { context.getString(R.string.repo_incomplete, label) }
+        }
         if (destination.exists()) destination.delete()
         require(temporary.renameTo(destination)) {
             context.getString(R.string.repo_finalize_failed, label)
