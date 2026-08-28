@@ -51,7 +51,7 @@ jobs:
                  "${HOME}/.android/cache" || true
           "${SDKMANAGER}" --update || true
 
-      - name: Confirm Android API 37 is available
+      - name: Confirm Android API 37 platform package
         shell: bash
         run: |
           set -euo pipefail
@@ -61,7 +61,7 @@ jobs:
           fi
 
           "${SDKMANAGER}" --channel=3 --list | tee sdkmanager-packages.txt
-          grep -E 'platforms;android-37|platforms;android-37-ext[0-9]+' sdkmanager-packages.txt
+          grep -E 'platforms;android-37\.(0|1)|platforms;android-37\.2-beta[0-9]+' sdkmanager-packages.txt
 
       - name: Install Android API 37 build dependencies
         shell: bash
@@ -74,7 +74,7 @@ jobs:
 
           "${SDKMANAGER}" --channel=3 \
             "platform-tools" \
-            "platforms;android-37" \
+            "platforms;android-37.1" \
             "build-tools;37.0.0" \
             "cmake;3.22.1"
 
@@ -82,7 +82,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -d "${ANDROID_HOME}/platforms/android-37"
+          test -d "${ANDROID_HOME}/platforms/android-37.1"
           test -d "${ANDROID_HOME}/build-tools/37.0.0"
           test -d "${ANDROID_HOME}/cmake/3.22.1"
 
