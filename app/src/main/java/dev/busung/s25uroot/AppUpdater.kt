@@ -126,3 +126,56 @@ object AppUpdater {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_PAGE)))
     }
 }
+
+/** Fetches and installs the latest KernelSU Manager APK from tiann/KernelSU. */
+object KernelSuManagerInstaller {
+
+    private const val KSU_GITHUB_API = "https://api.github.com/repos/tiann/KernelSU"
+    private const val KSU_RELEASES_PAGE = "https://github.com/tiann/KernelSU/releases/latest"
+
+    /** Returns the browser_download_url of the first .apk in the latest KSU release, or null. */
+    suspend fun fetchManagerApkUrl(): String? = withContext(Dispatchers.IO) {
+        try {
+            val connection =
+                URL("$KSU_GITHUB_API/releases/latest").openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "RootMyGalaxy/${BuildConfig.VERSION_NAME}")
+                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 10_000
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(body)
+                json.optJSONArray("assets")?.let { assets ->
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        if (asset.optString("name").endsWith(".apk")) {
+                            return@withContext asset.optString("browser_download_url")
+                                .ifEmpty { null }
+                        }
+                    }
+                }
+                null
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Downloads the manager APK to cache and triggers the system installer. */
+    suspend fun downloadAndInstall(
+        context: Context,
+        onProgress: (Float) -> Unit = {},
+    ): Boolean {
+        val url = fetchManagerApkUrl() ?: return false
+        val apk = AppUpdater.downloadApk(context, url, onProgress) ?: return false
+        return AppUpdater.installApk(context, apk)
+    }
+
+    fun openReleasesPage(context: Context) {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(KSU_RELEASES_PAGE)))
+    }
+}
