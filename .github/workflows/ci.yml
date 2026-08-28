@@ -36,8 +36,7 @@ jobs:
         run: |
           sdkmanager --channel=3 \
             "platform-tools" \
-            "platforms;android-37" \
-            "build-tools;37.0.0" \
+            "platforms;android-Baklava" \
             "cmake;3.22.1"
 
       - name: Verify Android SDK
