@@ -360,6 +360,7 @@ private fun RootApp(
                 kernelVersions = setOf(device.kernelVersion),
                 exploit = RemoteArtifact("", -1L),
                 kernelSu = RemoteArtifact("", -1L),
+                requiresFreshP0Session = false,
             )
         } else {
             showLocalPayloadPicker = profile
@@ -554,6 +555,7 @@ private fun RootApp(
                                 kernelVersions = setOf(device.kernelVersion),
                                 exploit = RemoteArtifact("", -1L),
                                 kernelSu = RemoteArtifact("", -1L),
+                                requiresFreshP0Session = false,
                             )
                         } else if (advancedMode) {
                             showTargetPicker = true
@@ -571,6 +573,7 @@ private fun RootApp(
                             kernelVersions = setOf(device.kernelVersion),
                             exploit = RemoteArtifact("", -1L),
                             kernelSu = RemoteArtifact("", -1L),
+                            requiresFreshP0Session = false,
                         )
                     },
                 )
