@@ -1,24 +1,24 @@
-name: CI Build
+name: Test Build
+# Fast compile check for pull requests — no APK upload, skips all SDK
+# install overhead by relying entirely on cached toolchain layers.
 
 on:
-  push:
+  pull_request:
     branches:
       - '**'
     paths-ignore:
       - '**.md'
-      - '.github/workflows/test-build.yml'
-      - '.github/workflows/quick-build.yml'
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: test-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: CI Build
+  test-build:
+    name: Test Build (compile check)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -48,16 +48,9 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-overwrite-existing: true
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --build-cache --parallel --console=plain
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
+      # compileDebugSources checks all Kotlin/Java + native compile steps
+      # without running packaging, signing, or dex merging — fastest possible
+      # signal that the code actually compiles.
+      - name: Compile sources (no APK)
+        run: ./gradlew compileDebugSources --no-daemon --build-cache --parallel --console=plain
