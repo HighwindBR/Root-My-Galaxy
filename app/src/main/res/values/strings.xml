@@ -207,5 +207,5 @@
         <item quantity="other">These runs and their logs will be permanently deleted.</item>
     </plurals>
     <string name="settings_reboot_after_install">Reboot after install</string>
-    <string name="settings_reboot_after_install_description">Trigger a userspace reboot automatically once KernelSU is loaded at boot</string>
+    <string name="settings_reboot_after_install_description">Automatically trigger a userspace reboot once installation completes</string>
 </resources>

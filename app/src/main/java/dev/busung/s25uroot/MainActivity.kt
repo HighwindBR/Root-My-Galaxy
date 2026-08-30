@@ -78,6 +78,7 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -167,6 +168,7 @@ class MainActivity : ComponentActivity() {
     private var advancedMode by mutableStateOf(false)
     private var shizukuMode by mutableStateOf(false)
     private var localPayloadMode by mutableStateOf(false)
+    private var rebootAfterInstall by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -177,6 +179,7 @@ class MainActivity : ComponentActivity() {
         advancedMode = AppPreferences.advancedMode(this)
         shizukuMode = AppPreferences.shizukuMode(this)
         localPayloadMode = AppPreferences.localPayloadMode(this)
+        rebootAfterInstall = AppPreferences.rebootAfterInstall(this)
         setContent {
             RootMyGalaxyTheme(accentColor = accentColor, themeMode = themeMode) {
                 RootApp(
@@ -186,6 +189,7 @@ class MainActivity : ComponentActivity() {
                     advancedMode = advancedMode,
                     shizukuMode = shizukuMode,
                     localPayloadMode = localPayloadMode,
+                    rebootAfterInstall = rebootAfterInstall,
                     onAccentColorChanged = { color ->
                         AppPreferences.setAccentColor(this, color)
                         accentColor = color
@@ -205,6 +209,10 @@ class MainActivity : ComponentActivity() {
                     onLocalPayloadModeChanged = { enabled ->
                         AppPreferences.setLocalPayloadMode(this, enabled)
                         localPayloadMode = enabled
+                    },
+                    onRebootAfterInstallChanged = { enabled ->
+                        AppPreferences.setRebootAfterInstall(this, enabled)
+                        rebootAfterInstall = enabled
                     },
                     openInstaller = { profileId, payloadUris ->
                         val installer = Intent(this, InstallActivity::class.java)
@@ -327,11 +335,13 @@ private fun RootApp(
     advancedMode: Boolean,
     shizukuMode: Boolean,
     localPayloadMode: Boolean,
+    rebootAfterInstall: Boolean,
     onAccentColorChanged: (AccentColor) -> Unit,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onAdvancedModeChanged: (Boolean) -> Unit,
     onShizukuModeChanged: (Boolean) -> Unit,
     onLocalPayloadModeChanged: (Boolean) -> Unit,
+    onRebootAfterInstallChanged: (Boolean) -> Unit,
     openInstaller: (String?, Map<String, Uri>) -> Unit,
 ) {
     val installState by installViewModel.state.collectAsStateWithLifecycle()
@@ -386,7 +396,6 @@ private fun RootApp(
     val openLocalPayloadPicker: (String?) -> Unit = { profileId ->
         val profile = targetCatalog.profiles.firstOrNull { it.profileId == profileId }
         if (profile == null) {
-            // No profile yet: use local mode with an implicitly matched profile id.
             showLocalPayloadPicker = TargetProfile(
                 profileId = InstallViewModel.LOCAL_PROFILE_ID,
                 displayName = "",
@@ -623,6 +632,7 @@ private fun RootApp(
                     advancedMode = advancedMode,
                     shizukuMode = shizukuMode,
                     localPayloadMode = localPayloadMode,
+                    rebootAfterInstall = rebootAfterInstall,
                     updateStatus = updateStatus,
                     onCheckForUpdate = checkForUpdate,
                     onStartDownload = startDownload,
@@ -631,6 +641,7 @@ private fun RootApp(
                     onAdvancedModeChanged = onAdvancedModeChanged,
                     onShizukuModeChanged = onShizukuModeChanged,
                     onLocalPayloadModeChanged = onLocalPayloadModeChanged,
+                    onRebootAfterInstallChanged = onRebootAfterInstallChanged,
                 )
             }
         }
@@ -1583,6 +1594,7 @@ private fun SettingsPage(
     advancedMode: Boolean,
     shizukuMode: Boolean,
     localPayloadMode: Boolean,
+    rebootAfterInstall: Boolean,
     updateStatus: UpdateStatus,
     onCheckForUpdate: () -> Unit,
     onStartDownload: (UpdateInfo) -> Unit,
@@ -1591,6 +1603,7 @@ private fun SettingsPage(
     onAdvancedModeChanged: (Boolean) -> Unit,
     onShizukuModeChanged: (Boolean) -> Unit,
     onLocalPayloadModeChanged: (Boolean) -> Unit,
+    onRebootAfterInstallChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -1760,13 +1773,24 @@ private fun SettingsPage(
                     title = stringResource(R.string.local_payload_mode),
                     description = stringResource(R.string.local_payload_mode_description),
                     checked = localPayloadMode,
-                    position = SettingsCardPosition.Bottom,
+                    position = SettingsCardPosition.Middle,
                     onCheckedChange = {
                         clickHaptic(view)
                         if (it) {
                             onAdvancedModeChanged(false)
                         }
                         onLocalPayloadModeChanged(it)
+                    },
+                )
+                SettingsSwitchCard(
+                    icon = Icons.Rounded.RestartAlt,
+                    title = stringResource(R.string.settings_reboot_after_install),
+                    description = stringResource(R.string.settings_reboot_after_install_description),
+                    checked = rebootAfterInstall,
+                    position = SettingsCardPosition.Bottom,
+                    onCheckedChange = {
+                        clickHaptic(view)
+                        onRebootAfterInstallChanged(it)
                     },
                 )
             }

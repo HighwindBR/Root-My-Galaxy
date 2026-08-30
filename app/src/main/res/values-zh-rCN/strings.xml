@@ -88,4 +88,6 @@
     <string name="local_exploit_selected">Exploit: %1$s</string>
     <string name="local_kernelsu_selected">KernelSU: %1$s</string>
     <string name="local_payload_exploit_required">Exploit payload must be selected</string>
+    <string name="settings_reboot_after_install">安装后重启</string>
+    <string name="settings_reboot_after_install_description">安装完成后自动触发用户空间重启</string>
 </resources>
