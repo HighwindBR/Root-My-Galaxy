@@ -210,6 +210,9 @@
     </plurals>
     <string name="settings_reboot_after_install">Reboot after install</string>
     <string name="settings_reboot_after_install_description">Automatically trigger a userspace reboot once installation completes</string>
+    <!-- Per-attempt toggle shown only inside the payload picker / confirm dialog -->
+    <string name="reboot_userspace_this_attempt">Reboot userspace after root</string>
+    <string name="reboot_userspace_this_attempt_description">Applies to this attempt only — overrides the global setting</string>
     <!-- Shown on the install success screen when a userspace reboot was not triggered automatically -->
     <string name="hint_userspace_reboot_modules">Most KernelSU modules require a userspace reboot to become active. If modules are not loading, trigger a userspace reboot from the KernelSU Manager app or via \"ksud boot-completed\" in a root shell.</string>
 </resources>
