@@ -214,7 +214,9 @@ class MainActivity : ComponentActivity() {
                         AppPreferences.setRebootAfterInstall(this, enabled)
                         rebootAfterInstall = enabled
                     },
-                    openInstaller = { profileId, payloadUris ->
+                    // rebootUserspace: null  →  global pref wins
+                    // rebootUserspace: true/false  →  override for this attempt only
+                    openInstaller = { profileId, payloadUris, rebootUserspace ->
                         val installer = Intent(this, InstallActivity::class.java)
                             .putExtra(InstallActivity.EXTRA_INSTALL_REQUEST_ID, UUID.randomUUID().toString())
                         if (profileId != null) {
@@ -225,6 +227,9 @@ class MainActivity : ComponentActivity() {
                                 InstallActivity.EXTRA_LOCAL_PAYLOAD_PREFIX + key,
                                 uri.toString(),
                             )
+                        }
+                        if (rebootUserspace != null) {
+                            installer.putExtra(InstallActivity.EXTRA_REBOOT_USERSPACE, rebootUserspace)
                         }
                         startActivity(installer)
                     },
@@ -342,13 +347,16 @@ private fun RootApp(
     onShizukuModeChanged: (Boolean) -> Unit,
     onLocalPayloadModeChanged: (Boolean) -> Unit,
     onRebootAfterInstallChanged: (Boolean) -> Unit,
-    openInstaller: (String?, Map<String, Uri>) -> Unit,
+    // rebootUserspace: null → honour global pref; true/false → one-shot override
+    openInstaller: (String?, Map<String, Uri>, Boolean?) -> Unit,
 ) {
     val installState by installViewModel.state.collectAsStateWithLifecycle()
     val history by installViewModel.history.collectAsStateWithLifecycle()
     val targetCatalog by installViewModel.targetCatalog.collectAsStateWithLifecycle()
     var selectedPage by remember { mutableStateOf(AppPage.Overview) }
     var showInstallConfirmation by remember { mutableStateOf(false) }
+    // Per-attempt reboot toggle state — reset each time the confirmation dialog opens.
+    var confirmRebootUserspace by remember { mutableStateOf(false) }
     var showTargetPicker by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<TargetProfile?>(null) }
     var compatibilityWarning by remember { mutableStateOf<CompatibilityWarning?>(null) }
@@ -425,7 +433,10 @@ private fun RootApp(
                     !profile.matchesKernelVersion(device) -> CompatibilityWarning.KernelVersion
                     else -> null
                 }
-                if (compatibilityWarning == null) showInstallConfirmation = true
+                if (compatibilityWarning == null) {
+                    confirmRebootUserspace = rebootAfterInstall
+                    showInstallConfirmation = true
+                }
             },
         )
     }
@@ -476,6 +487,7 @@ private fun RootApp(
                             CompatibilityWarning.KernelVersion -> null
                         }
                         if (compatibilityWarning == null) {
+                            confirmRebootUserspace = rebootAfterInstall
                             showInstallConfirmation = true
                         }
                     },
@@ -512,13 +524,52 @@ private fun RootApp(
                         stringResource(R.string.install_confirm_source),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    // Per-attempt reboot userspace toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = confirmRebootUserspace,
+                                role = Role.Switch,
+                                onValueChange = {
+                                    clickHaptic(view)
+                                    confirmRebootUserspace = it
+                                },
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.RestartAlt,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.reboot_userspace_this_attempt),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                stringResource(R.string.reboot_userspace_this_attempt_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = confirmRebootUserspace,
+                            onCheckedChange = null,
+                        )
+                    }
                 }
             },
             confirmButton = {
                 FilledTonalButton(onClick = {
                     clickHaptic(view)
                     showInstallConfirmation = false
-                    openInstaller(selectedProfile?.profileId, emptyMap())
+                    openInstaller(selectedProfile?.profileId, emptyMap(), confirmRebootUserspace)
                     selectedProfile = null
                 }) {
                     Text(stringResource(R.string.action_use_online_payload))
@@ -540,8 +591,9 @@ private fun RootApp(
     showLocalPayloadPicker?.let { profile ->
         LocalPayloadPicker(
             profileId = profile.profileId,
+            globalRebootUserspace = rebootAfterInstall,
             onDismiss = { showLocalPayloadPicker = null },
-            onConfirm = { exploitUri, kernelSuUri ->
+            onConfirm = { exploitUri, kernelSuUri, rebootUserspace ->
                 showLocalPayloadPicker = null
                 openInstaller(
                     profile.profileId,
@@ -549,6 +601,7 @@ private fun RootApp(
                         put(InstallViewModel.PAYLOAD_EXPLOIT, exploitUri)
                         kernelSuUri?.let { put(InstallViewModel.PAYLOAD_KERNELSU, it) }
                     },
+                    rebootUserspace,
                 )
             },
         )
@@ -604,6 +657,7 @@ private fun RootApp(
                             showTargetPicker = true
                             installViewModel.loadTargetCatalog()
                         } else {
+                            confirmRebootUserspace = rebootAfterInstall
                             showInstallConfirmation = true
                         }
                     },
@@ -1904,13 +1958,16 @@ private fun UpdateSettingsCard(
 @Composable
 private fun LocalPayloadPicker(
     profileId: String,
+    globalRebootUserspace: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (exploitUri: Uri, kernelSuUri: Uri?) -> Unit,
+    onConfirm: (exploitUri: Uri, kernelSuUri: Uri?, rebootUserspace: Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     var exploitUri by remember { mutableStateOf<Uri?>(null) }
     var kernelSuUri by remember { mutableStateOf<Uri?>(null) }
+    // Per-attempt override, seeded from the global preference.
+    var rebootUserspace by remember { mutableStateOf(globalRebootUserspace) }
 
     val exploitPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -1976,6 +2033,47 @@ private fun LocalPayloadPicker(
                 }) {
                     Text(stringResource(R.string.action_choose_kernelsu))
                 }
+
+                HorizontalDivider()
+
+                // Per-attempt reboot userspace toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = rebootUserspace,
+                            role = Role.Switch,
+                            onValueChange = {
+                                clickHaptic(view)
+                                rebootUserspace = it
+                            },
+                        )
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.RestartAlt,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.reboot_userspace_this_attempt),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            stringResource(R.string.reboot_userspace_this_attempt_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = rebootUserspace,
+                        onCheckedChange = null,
+                    )
+                }
             }
         },
         confirmButton = {
@@ -1984,7 +2082,7 @@ private fun LocalPayloadPicker(
                     clickHaptic(view)
                     val selectedExploit = exploitUri
                     if (selectedExploit != null) {
-                        onConfirm(selectedExploit, kernelSuUri)
+                        onConfirm(selectedExploit, kernelSuUri, rebootUserspace)
                     }
                 },
                 enabled = exploitUri != null,
