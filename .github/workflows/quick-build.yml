@@ -1,5 +1,5 @@
 name: Quick Build
-# Produces a debug APK as fast as possible. Intended for manual
+# Produces a release APK as fast as possible. Intended for manual
 # on-demand builds and pushes to main. Maximises Gradle + SDK caching
 # and skips slow SDK Manager verification steps entirely.
 
@@ -52,13 +52,13 @@ jobs:
         with:
           cache-overwrite-existing: true
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --build-cache --parallel --configuration-cache --console=plain
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon --build-cache --parallel --configuration-cache --console=plain
 
-      - name: Upload debug APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-quick-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
+          name: app-quick-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 7
