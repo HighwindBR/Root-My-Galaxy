@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.Button
@@ -76,6 +77,13 @@ class InstallActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
         val localPayloadUris = readLocalPayloadUris(intent)
+        // -1 sentinel means the extra was not set; any other value is an explicit override.
+        val rebootUserspaceExtra = intent.getIntExtra(EXTRA_REBOOT_USERSPACE, -1)
+        val rebootUserspaceOverride: Boolean? = when (rebootUserspaceExtra) {
+            0 -> false
+            1 -> true
+            else -> null
+        }
         val startInstall = savedInstanceState == null && AppPreferences.consumeInstallRequest(
             this,
             intent.getStringExtra(EXTRA_INSTALL_REQUEST_ID),
@@ -89,11 +97,21 @@ class InstallActivity : ComponentActivity() {
                 val installState by installViewModel.state.collectAsStateWithLifecycle()
                 BackHandler(enabled = installState.busy) {}
                 LaunchedEffect(startInstall, profileId, localPayloadUris) {
-                    if (startInstall) installViewModel.install(profileId, localPayloadUris)
+                    if (startInstall) installViewModel.install(
+                        profileId,
+                        localPayloadUris,
+                        rebootUserspaceOverride,
+                    )
                 }
                 InstallScreen(
                     installState = installState,
-                    onRetry = { installViewModel.install(profileId, localPayloadUris) },
+                    onRetry = {
+                        installViewModel.install(
+                            profileId,
+                            localPayloadUris,
+                            rebootUserspaceOverride,
+                        )
+                    },
                     onClose = ::finish,
                 )
             }
@@ -112,6 +130,11 @@ class InstallActivity : ComponentActivity() {
         const val EXTRA_INSTALL_REQUEST_ID = "install_request_id"
         const val EXTRA_PROFILE_ID = "profile_id"
         const val EXTRA_LOCAL_PAYLOAD_PREFIX = "local_payload_"
+        /**
+         * Optional int extra: 1 = reboot userspace after install, 0 = do not reboot,
+         * absent (default -1) = defer to the global [AppPreferences.rebootAfterInstall] pref.
+         */
+        const val EXTRA_REBOOT_USERSPACE = "reboot_userspace"
     }
 }
 
@@ -195,6 +218,11 @@ private fun InstallScreen(
             )
 
             if (!installState.busy) {
+                // Show the userspace-reboot hint whenever root succeeded.
+                if (installState.phase == InstallPhase.Installed) {
+                    UserspaceRebootHint()
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -296,6 +324,40 @@ private fun InstallScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Informational banner shown after a successful root explaining that most
+ * KernelSU modules require a userspace reboot to become active.
+ */
+@Composable
+private fun UserspaceRebootHint() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Info,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(20.dp)
+                    .padding(top = 2.dp),
+            )
+            Text(
+                text = stringResource(R.string.hint_userspace_reboot_modules),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
