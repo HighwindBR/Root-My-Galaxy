@@ -26,6 +26,16 @@ android {
         }
     }
 
+    buildTypes {
+        release {
+            // Sign with the debug keystore so CI can produce a complete,
+            // installable APK without needing signing secrets.
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
