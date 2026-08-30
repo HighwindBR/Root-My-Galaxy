@@ -92,6 +92,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     @Volatile
     private var activeRunShizuku: Boolean? = null
+
+    /** Per-attempt reboot-userspace override; null means fall back to the global pref. */
+    @Volatile
+    private var activeRunRebootUserspace: Boolean? = null
+
     val state: StateFlow<InstallUiState> = mutableState.asStateFlow()
     val history: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
     val targetCatalog: StateFlow<TargetCatalogUiState> = mutableTargetCatalog.asStateFlow()
@@ -161,7 +166,16 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun install(profileId: String? = null, localPayloadUris: Map<String, Uri> = emptyMap()) {
+    /**
+     * @param rebootUserspace When non-null, overrides the global [AppPreferences.rebootAfterInstall]
+     *   preference for this one attempt only. `true` triggers a userspace reboot (pkill zygote)
+     *   immediately after a successful install. `null` defers to the persisted preference.
+     */
+    fun install(
+        profileId: String? = null,
+        localPayloadUris: Map<String, Uri> = emptyMap(),
+        rebootUserspace: Boolean? = null,
+    ) {
         this.localPayloadUris = localPayloadUris
         if (installJob?.isActive == true || mutableState.value.phase == InstallPhase.Installed) return
         discoveryJob?.cancel()
@@ -171,10 +185,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 probeOutput = mutableState.value.probeOutput,
             )
             startHistory()
-            // Freeze the transport for the whole run so a mid-run preference
-            // change cannot mix Shizuku and standalone execution between the
-            // exploit and the KernelSU staging steps.
+            // Freeze transport and reboot settings for the whole run so a mid-run preference
+            // change cannot mix Shizuku and standalone execution between steps.
             activeRunShizuku = AppPreferences.shizukuMode(app)
+            activeRunRebootUserspace = rebootUserspace
             try {
                 if (shizukuEnabled()) {
                     appendLog(app.getString(R.string.log_shizuku_prepare))
@@ -252,12 +266,21 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
                 appendLog(app.getString(R.string.log_install_complete))
                 finishHistory(InstallRunResult.Succeeded)
+
+                // Reboot userspace if requested for this attempt.
+                val shouldRebootUserspace = activeRunRebootUserspace
+                    ?: AppPreferences.rebootAfterInstall(app)
+                if (shouldRebootUserspace) {
+                    appendLog(app.getString(R.string.log_reboot_userspace))
+                    runHelper("-c", "pkill -f zygote")
+                }
             } catch (error: Throwable) {
                 appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
                 setPhase(InstallPhase.Failed, app.getString(R.string.status_install_failed))
                 finishHistory(InstallRunResult.Failed)
             } finally {
                 activeRunShizuku = null
+                activeRunRebootUserspace = null
             }
         }
     }

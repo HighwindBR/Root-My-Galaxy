@@ -76,6 +76,13 @@ class InstallActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID)
         val localPayloadUris = readLocalPayloadUris(intent)
+        // -1 sentinel means the extra was not set; any other value is an explicit override.
+        val rebootUserspaceExtra = intent.getIntExtra(EXTRA_REBOOT_USERSPACE, -1)
+        val rebootUserspaceOverride: Boolean? = when (rebootUserspaceExtra) {
+            0 -> false
+            1 -> true
+            else -> null
+        }
         val startInstall = savedInstanceState == null && AppPreferences.consumeInstallRequest(
             this,
             intent.getStringExtra(EXTRA_INSTALL_REQUEST_ID),
@@ -89,11 +96,21 @@ class InstallActivity : ComponentActivity() {
                 val installState by installViewModel.state.collectAsStateWithLifecycle()
                 BackHandler(enabled = installState.busy) {}
                 LaunchedEffect(startInstall, profileId, localPayloadUris) {
-                    if (startInstall) installViewModel.install(profileId, localPayloadUris)
+                    if (startInstall) installViewModel.install(
+                        profileId,
+                        localPayloadUris,
+                        rebootUserspaceOverride,
+                    )
                 }
                 InstallScreen(
                     installState = installState,
-                    onRetry = { installViewModel.install(profileId, localPayloadUris) },
+                    onRetry = {
+                        installViewModel.install(
+                            profileId,
+                            localPayloadUris,
+                            rebootUserspaceOverride,
+                        )
+                    },
                     onClose = ::finish,
                 )
             }
@@ -112,6 +129,11 @@ class InstallActivity : ComponentActivity() {
         const val EXTRA_INSTALL_REQUEST_ID = "install_request_id"
         const val EXTRA_PROFILE_ID = "profile_id"
         const val EXTRA_LOCAL_PAYLOAD_PREFIX = "local_payload_"
+        /**
+         * Optional int extra: 1 = reboot userspace after install, 0 = do not reboot,
+         * absent (default -1) = defer to the global [AppPreferences.rebootAfterInstall] pref.
+         */
+        const val EXTRA_REBOOT_USERSPACE = "reboot_userspace"
     }
 }
 
