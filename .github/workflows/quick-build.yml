@@ -1,24 +1,25 @@
-name: CI Build
+name: Quick Build
+# Produces a debug APK as fast as possible. Intended for manual
+# on-demand builds and pushes to main. Maximises Gradle + SDK caching
+# and skips slow SDK Manager verification steps entirely.
 
 on:
   push:
     branches:
-      - '**'
+      - main
     paths-ignore:
       - '**.md'
-      - '.github/workflows/test-build.yml'
-      - '.github/workflows/quick-build.yml'
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: quick-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: CI Build
+  quick-build:
+    name: Quick Build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -52,12 +53,12 @@ jobs:
           cache-overwrite-existing: true
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --build-cache --parallel --console=plain
+        run: ./gradlew assembleDebug --no-daemon --build-cache --parallel --configuration-cache --console=plain
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: app-quick-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
