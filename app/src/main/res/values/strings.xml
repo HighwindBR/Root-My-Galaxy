@@ -206,4 +206,6 @@
         <item quantity="one">This run and its logs will be permanently deleted.</item>
         <item quantity="other">These runs and their logs will be permanently deleted.</item>
     </plurals>
+    <string name="settings_reboot_after_install">Reboot after install</string>
+    <string name="settings_reboot_after_install_description">Trigger a userspace reboot automatically once KernelSU is loaded at boot</string>
 </resources>
