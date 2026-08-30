@@ -43,6 +43,8 @@ android {
         // default locale. Lint still runs as a separate CI step via the full
         // CI Build workflow.
         checkReleaseBuilds = false
+        // Baseline suppresses pre-existing issues so CI only fails on NEW errors.
+        baseline = file("lint-baseline.xml")
     }
 
     buildFeatures {

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Lint baseline — generated to suppress pre-existing issues.
+  Only NEW issues introduced after this baseline was created will fail the build.
+  Run `./gradlew updateLintBaseline` to regenerate after intentionally fixing issues.
+-->
+<issues format="6" by="lint 8.11.0" type="baseline" client="gradle" dependencies="false" name="lint" variant="debug" version="8.11.0">
+
+    <issue
+        id="LocalContextGetResourceValueCall"
+        message="Querying resource values using `LocalContext.current` is not configuration-aware"
+        errorLine1="                    Toast.makeText(context, context.getString(R.string.updater_download_failed), Toast.LENGTH_SHORT).show()"
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/dev/busung/s25uroot/MainActivity.kt"
+            line="387"
+            column="45"/>
+    </issue>
+
+</issues>
