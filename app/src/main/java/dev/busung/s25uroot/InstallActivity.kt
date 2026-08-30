@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.Button
@@ -217,6 +218,11 @@ private fun InstallScreen(
             )
 
             if (!installState.busy) {
+                // Show the userspace-reboot hint whenever root succeeded.
+                if (installState.phase == InstallPhase.Installed) {
+                    UserspaceRebootHint()
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -318,6 +324,40 @@ private fun InstallScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Informational banner shown after a successful root explaining that most
+ * KernelSU modules require a userspace reboot to become active.
+ */
+@Composable
+private fun UserspaceRebootHint() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Info,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(20.dp)
+                    .padding(top = 2.dp),
+            )
+            Text(
+                text = stringResource(R.string.hint_userspace_reboot_modules),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
