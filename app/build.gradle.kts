@@ -36,6 +36,15 @@ android {
         }
     }
 
+    lint {
+        // lintVitalRelease runs automatically during assembleRelease and blocks
+        // the build on any fatal lint issue. Disable it here so the quick-build
+        // workflow can produce an APK even when translations are ahead of the
+        // default locale. Lint still runs as a separate CI step via the full
+        // CI Build workflow.
+        checkReleaseBuilds = false
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
