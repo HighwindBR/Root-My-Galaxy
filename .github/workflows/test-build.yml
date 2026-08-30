@@ -41,6 +41,12 @@ jobs:
             build-tools;37.0.0
             cmake;3.22.1
 
+      - name: Cache NDK r28
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/ndk/r28
+          key: ndk-r28
+
       - name: Set up NDK r28
         uses: nttld/setup-ndk@v1
         with:
@@ -53,4 +59,6 @@ jobs:
       # without running packaging, signing, or dex merging — fastest possible
       # signal that the code actually compiles.
       - name: Compile sources (no APK)
-        run: ./gradlew compileDebugSources --no-daemon --build-cache --parallel --console=plain
+        env:
+          GRADLE_OPTS: "-Xmx5g -XX:+HeapDumpOnOutOfMemoryError"
+        run: ./gradlew compileDebugSources --build-cache --parallel --console=plain

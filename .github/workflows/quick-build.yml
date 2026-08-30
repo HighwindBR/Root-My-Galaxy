@@ -42,6 +42,12 @@ jobs:
             build-tools;37.0.0
             cmake;3.22.1
 
+      - name: Cache NDK r28
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/ndk/r28
+          key: ndk-r28
+
       - name: Set up NDK r28
         uses: nttld/setup-ndk@v1
         with:
@@ -53,7 +59,9 @@ jobs:
           cache-overwrite-existing: true
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --no-daemon --build-cache --parallel --configuration-cache --console=plain
+        env:
+          GRADLE_OPTS: "-Xmx5g -XX:+HeapDumpOnOutOfMemoryError"
+        run: ./gradlew assembleRelease --build-cache --parallel --configuration-cache --console=plain
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
