@@ -5,7 +5,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Resolves assets from the latest TheFlood424K/Root-My-Galaxy GitHub release.
+ * Resolves assets from the latest tiann/KernelSU GitHub release.
  *
  * Used in two places:
  *  1. [KernelSuManagerInstaller] — finds the manager .apk so the user can
@@ -16,12 +16,12 @@ import java.net.URL
  */
 object KernelSuReleases {
 
-    private const val KSU_API = "https://api.github.com/repos/TheFlood424K/Root-My-Galaxy/releases/latest"
-    const val KSU_RELEASES_PAGE = "https://github.com/TheFlood424K/Root-My-Galaxy/releases/latest"
+    private const val KSU_API = "https://api.github.com/repos/tiann/KernelSU/releases/latest"
+    const val KSU_RELEASES_PAGE = "https://github.com/tiann/KernelSU/releases/latest"
 
     /**
      * Calls the GitHub Releases API and returns the [RemoteArtifact] for the
-     * ksud-arm64 binary in the latest Root-My-Galaxy release, or null on any error.
+     * ksud-arm64 binary in the latest KernelSU release, or null on any error.
      *
      * Asset name priority (first match wins):
      *   1. "ksud-aarch64-linux-android" (exact, no extension)
@@ -65,8 +65,8 @@ object KernelSuReleases {
     }.getOrNull()
 
     /**
-     * Returns the browser_download_url of the first .apk in the latest
-     * Root-My-Galaxy release, or null on any error.
+     * Returns the browser_download_url of the first .apk in the latest KSU
+     * release, or null on any error.
      */
     fun fetchManagerApkUrl(): String? = runCatching {
         val connection = URL(KSU_API).openConnection() as HttpURLConnection
