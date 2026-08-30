@@ -36,6 +36,7 @@ object AppPreferences {
     private const val SHIZUKU_MODE = "shizuku_mode"
     private const val LOCAL_PAYLOAD_MODE = "local_payload_mode"
     private const val AUTO_REROOT = "auto_reroot"
+    private const val REBOOT_AFTER_INSTALL = "reboot_after_install"
     private const val CONSUMED_INSTALL_REQUEST = "consumed_install_request"
 
     fun accentColor(context: Context): AccentColor = AccentColor.fromStoredValue(
@@ -92,6 +93,20 @@ object AppPreferences {
     fun setAutoReroot(context: Context, enabled: Boolean) {
         prefs(context).edit()
             .putBoolean(AUTO_REROOT, enabled)
+            .apply()
+    }
+
+    /**
+     * Whether [BootInstallService] should trigger a userspace reboot
+     * (`su -c svc power reboot userspace`) once [InstallPhase.Installed] succeeds.
+     * Defaults to false so the device does not reboot unexpectedly.
+     */
+    fun rebootAfterInstall(context: Context): Boolean =
+        prefs(context).getBoolean(REBOOT_AFTER_INSTALL, false)
+
+    fun setRebootAfterInstall(context: Context, enabled: Boolean) {
+        prefs(context).edit()
+            .putBoolean(REBOOT_AFTER_INSTALL, enabled)
             .apply()
     }
 

@@ -29,6 +29,10 @@ import kotlinx.coroutines.launch
  * The service stops itself when the install reaches a terminal phase
  * (Installed / Failed). It is not restarted by the system afterwards;
  * re-running happens on the next boot or from the app UI.
+ *
+ * When [AppPreferences.rebootAfterInstall] is enabled the service will
+ * execute `su -c svc power reboot userspace` immediately after a successful
+ * [InstallPhase.Installed] before stopping itself.
  */
 class BootInstallService : Service() {
 
@@ -68,7 +72,12 @@ class BootInstallService : Service() {
                 val text = state.log.lineSequence().lastOrNull()?.take(120)
                     ?: state.message
                 notify(title, text)
-                if (state.phase == InstallPhase.Installed || state.phase == InstallPhase.Failed) {
+                if (state.phase == InstallPhase.Installed) {
+                    if (AppPreferences.rebootAfterInstall(this@BootInstallService)) {
+                        triggerUserspaceReboot()
+                    }
+                    stopSelf()
+                } else if (state.phase == InstallPhase.Failed) {
                     stopSelf()
                 }
             }
@@ -87,6 +96,21 @@ class BootInstallService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Executes `su -c svc power reboot userspace` on a background thread.
+     * Failures are silently swallowed — the service will still stop itself
+     * via [stopSelf] in the caller regardless of whether the reboot fires.
+     */
+    private fun triggerUserspaceReboot() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "svc power reboot userspace"))
+            } catch (_: Exception) {
+                // su unavailable or command rejected — ignore and let the service stop normally
+            }
+        }
+    }
 
     private fun notify(title: String, text: String) {
         val manager = getSystemService(NotificationManager::class.java)
