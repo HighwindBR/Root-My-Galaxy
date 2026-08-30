@@ -114,6 +114,7 @@
     <string name="log_bootstrap_root">[+] Bootstrap root acquired</string>
     <string name="log_ksu_staged">[+] KernelSU staging complete</string>
     <string name="log_ksu_control_verified">[+] KernelSU control channel verified</string>
+    <string name="log_reboot_userspace">[*] Triggering userspace reboot…</string>
     <string name="error_helper_unavailable">Cannot execute bootstrap helper</string>
     <string name="error_exploit_stalled">Exploit log has not been updated for 90 seconds</string>
     <string name="error_exploit_timeout">Exploit exceeded 15-minute limit</string>
