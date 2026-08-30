@@ -161,7 +161,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun install(profileId: String? = null, localPayloadUris: Map<String, Uri> = emptyMap()) {
+    fun install(
+        profileId: String? = null,
+        localPayloadUris: Map<String, Uri> = emptyMap(),
+        rebootUserspace: Boolean = false,
+    ) {
         this.localPayloadUris = localPayloadUris
         if (installJob?.isActive == true || mutableState.value.phase == InstallPhase.Installed) return
         discoveryJob?.cancel()
@@ -252,6 +256,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
                 appendLog(app.getString(R.string.log_install_complete))
                 finishHistory(InstallRunResult.Succeeded)
+
+                if (rebootUserspace) {
+                    appendLog(app.getString(R.string.log_reboot_userspace))
+                    runHelper("-c", "svc power reboot userspace")
+                }
             } catch (error: Throwable) {
                 appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
                 setPhase(InstallPhase.Failed, app.getString(R.string.status_install_failed))
