@@ -35,6 +35,7 @@ object AppPreferences {
     private const val ADVANCED_MODE = "advanced_mode"
     private const val SHIZUKU_MODE = "shizuku_mode"
     private const val LOCAL_PAYLOAD_MODE = "local_payload_mode"
+    private const val AUTO_REROOT = "auto_reroot"
     private const val CONSUMED_INSTALL_REQUEST = "consumed_install_request"
 
     fun accentColor(context: Context): AccentColor = AccentColor.fromStoredValue(
@@ -81,6 +82,16 @@ object AppPreferences {
     fun setLocalPayloadMode(context: Context, enabled: Boolean) {
         prefs(context).edit()
             .putBoolean(LOCAL_PAYLOAD_MODE, enabled)
+            .apply()
+    }
+
+    /** Whether the app should automatically re-root the device on every boot. */
+    fun autoReroot(context: Context): Boolean =
+        prefs(context).getBoolean(AUTO_REROOT, true)
+
+    fun setAutoReroot(context: Context, enabled: Boolean) {
+        prefs(context).edit()
+            .putBoolean(AUTO_REROOT, enabled)
             .apply()
     }
 
