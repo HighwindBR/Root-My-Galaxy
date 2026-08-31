@@ -13,6 +13,9 @@
     <string name="action_retry">Retry</string>
     <string name="action_done">Done</string>
     <string name="action_back">Back</string>
+    <string name="action_browse">Browse</string>
+    <string name="action_select_all">Select all</string>
+    <string name="action_deselect_all">Deselect all</string>
     <string name="install_tap_manager">Tap to install KernelSU Manager</string>
     <string name="install_tap_open_manager">Tap to open KernelSU Manager</string>
     <string name="install_tap_retry">Tap to retry</string>
@@ -55,6 +58,7 @@
     <string name="history_title">Run History</string>
     <string name="history_empty_title">No run history</string>
     <string name="history_empty_description">After execution, results and logs will appear here.</string>
+    <string name="history_empty">No run history</string>
     <string name="history_running">Running</string>
     <string name="history_succeeded">Success</string>
     <string name="history_failed">Failed</string>
@@ -64,6 +68,7 @@
     <string name="history_log">Execution log</string>
     <string name="history_log_empty">No log output.</string>
     <string name="history_payload">Payload: %1$s</string>
+    <string name="history_local_payload">Local payload</string>
     <string name="history_shizuku_used">Shizuku used</string>
     <string name="history_shizuku_not_used">Shizuku not used</string>
     <string name="export_log">Export log</string>
@@ -86,6 +91,8 @@
     <string name="step_exploit_detail">Get bootstrap root</string>
     <string name="step_ksu_title">Load KernelSU</string>
     <string name="step_ksu_detail">Late-load module and verify control channel</string>
+    <string name="step_reboot_title">Userspace Reboot</string>
+    <string name="step_reboot_detail">Trigger userspace reboot to activate modules</string>
     <string name="phase_checking">Checking supported device and firmware</string>
     <string name="phase_ready">Ready to install</string>
     <string name="phase_downloading">Downloading pinned payload from GitHub</string>
@@ -163,6 +170,11 @@
     <string name="local_payload_mode_description">Select a payload file from this device instead of downloading from GitHub</string>
     <string name="local_payload_card_title">Use local payload</string>
     <string name="local_payload_card_description">Select exploit and KernelSU files stored on this device</string>
+    <string name="local_payload_title">Local payload</string>
+    <string name="local_payload_exploit_label">Exploit (.so)</string>
+    <string name="local_payload_none">None selected</string>
+    <string name="local_payload_kernelsu_label">KernelSU (ksud)</string>
+    <string name="local_payload_optional">Optional</string>
     <string name="shizuku_not_running_title">Shizuku is not running</string>
     <string name="shizuku_not_running_body">Please start the Shizuku service via adb or root, grant permission to this app, and then enable this option.</string>
     <string name="action_download_shizuku">Download Shizuku</string>
@@ -174,6 +186,10 @@
     <string name="repo_profile_missing">Support configuration %1$s is no longer available</string>
     <string name="select_device_title">Select payload</string>
     <string name="select_device_description">Select payload by device model and kernel version.</string>
+    <string name="select_target_title">Select payload</string>
+    <string name="target_load_error">Failed to load payload list</string>
+    <string name="target_none_available">No payloads available</string>
+    <string name="target_incompatible">Incompatible with this device</string>
     <string name="local_payload_display_name">Local payload</string>
     <string name="select_local_exploit_title">Select exploit payload</string>
     <string name="select_local_exploit_body">Please select the exploit shared library (.so) from this device.</string>
@@ -216,8 +232,36 @@
         <item quantity="one">This run and its logs will be permanently deleted.</item>
         <item quantity="other">These runs and their logs will be permanently deleted.</item>
     </plurals>
+    <plurals name="history_delete_n">
+        <item quantity="one">Delete %1$d run</item>
+        <item quantity="other">Delete %1$d runs</item>
+    </plurals>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_accent_color">Accent color</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_section_advanced">Advanced</string>
+    <string name="settings_advanced_mode">Advanced mode</string>
+    <string name="settings_advanced_mode_description">Manually select a device-compatible payload during installation</string>
+    <string name="settings_shizuku_mode">Use Shizuku</string>
+    <string name="settings_shizuku_mode_description">Run the payload using Shizuku, which may improve reliability</string>
+    <string name="settings_local_payload_mode">Use local payload</string>
+    <string name="settings_local_payload_mode_description">Select a payload file from this device instead of downloading from GitHub</string>
     <string name="settings_reboot_after_install">Reboot after install</string>
     <string name="settings_reboot_after_install_description">Automatically trigger a userspace reboot once installation completes</string>
+    <string name="settings_section_about">About</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_source_code">Source code</string>
+    <string name="accent_dynamic">System Dynamic Color</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_green">Green</string>
+    <string name="accent_purple">Purple</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_orange">Orange</string>
+    <string name="accent_pink">Pink</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_yellow">Yellow</string>
+    <string name="accent_monochrome">Monochrome</string>
     <!-- Per-attempt toggle shown only inside the payload picker / confirm dialog -->
     <string name="reboot_userspace_this_attempt">Reboot userspace after root</string>
     <string name="reboot_userspace_this_attempt_description">Applies to this attempt only — overrides the global setting</string>
