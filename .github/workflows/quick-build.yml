@@ -21,13 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    env:
-      NDK_VERSION: r28
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # setup-java's built-in Gradle cache is a plain ~/.gradle/caches tar —
+      # no action overhead, no init-script injection, no toolchain download.
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -35,33 +34,51 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      # Cache the full NDK tree. On a hit the nttld step is a fast no-op.
-      - name: Cache NDK r28
+      # Restore the NDK directly from cache. On a hit the entire nttld
+      # JS action is bypassed — saves ~10s of Node bootstrap per run.
+      - name: Restore NDK from cache
+        id: ndk-cache
         uses: actions/cache@v4
         with:
-          path: ${{ runner.tool_cache }}/ndk/r28
-          key: ndk-r28-${{ runner.os }}-v2
+          path: ${{ runner.tool_cache }}/ndk
+          key: ndk-r28b-${{ runner.os }}-v1
           save-always: false
 
-      - name: Set up NDK r28
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: ${{ env.NDK_VERSION }}
-          local_cache: true
-          add-to-path: false
+      # Cache miss path: copy from the runner's pre-installed NDK bundle
+      # instead of downloading. ubuntu-latest ships NDK 27+ under
+      # $ANDROID_SDK_ROOT/ndk/. Use the newest available; fall back to
+      # sdkmanager only if nothing is present at all.
+      - name: Provision NDK (cache miss only)
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          NDK_TARGET="${{ runner.tool_cache }}/ndk"
+          mkdir -p "$NDK_TARGET"
+
+          # Try pre-installed NDK versions (newest first)
+          INSTALLED=$(ls -r "${ANDROID_SDK_ROOT}/ndk/" 2>/dev/null | head -1)
+          if [[ -n "$INSTALLED" ]]; then
+            echo "Using pre-installed NDK: ${INSTALLED}"
+            cp -al "${ANDROID_SDK_ROOT}/ndk/${INSTALLED}" "${NDK_TARGET}/r28"
+          else
+            echo "No pre-installed NDK found, installing via sdkmanager…"
+            yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" \
+              "ndk;28.0.13004108" 2>/dev/null
+            cp -al "${ANDROID_SDK_ROOT}/ndk/28.0.13004108" "${NDK_TARGET}/r28"
+          fi
 
       - name: Export NDK env vars
         run: |
-          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          NDK_PATH="${{ runner.tool_cache }}/ndk/r28"
+          echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${NDK_PATH}" >> $GITHUB_ENV
 
-      # ubuntu-latest ships API 35, build-tools 35.0.0, and cmake 3.22.1.
-      # Only install what is genuinely missing; skip entirely if all present.
+      # ubuntu-latest ships API 35 + build-tools 35.0.0 + cmake 3.22.1.
+      # compileSdk=37 needs android-37; check and install only what's missing.
       - name: Install missing SDK components
         run: |
           SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
           NEED=""
+          [[ -d "${ANDROID_SDK_ROOT}/platforms/android-37" ]]  || NEED+=" platforms;android-37"
           [[ -d "${ANDROID_SDK_ROOT}/platforms/android-35" ]]  || NEED+=" platforms;android-35"
           [[ -d "${ANDROID_SDK_ROOT}/build-tools/35.0.0" ]]     || NEED+=" build-tools;35.0.0"
           [[ -d "${ANDROID_SDK_ROOT}/cmake/3.22.1" ]]            || NEED+=" cmake;3.22.1"
@@ -71,27 +88,21 @@ jobs:
             echo "All required SDK components already present, skipping sdkmanager."
           fi
 
-      # Cache the CMake / ninja build output keyed on the native sources.
-      # On a warm cache the ExternalNativeBuild task is entirely UP-TO-DATE.
+      # Cache CMake/ninja build output keyed on native sources.
+      # On a warm cache ExternalNativeBuild is fully UP-TO-DATE.
       - name: Cache native build output
         uses: actions/cache@v4
         with:
           path: app/.cxx
-          key: native-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/cpp/**') }}-${{ hashFiles('app/build.gradle.kts') }}
-          restore-keys: |
-            native-arm64-${{ runner.os }}-
+          key: native-arm64-${{ runner.os }}-${{ hashFiles('app/src/main/cpp/**', 'app/build.gradle.kts') }}
+          restore-keys: native-arm64-${{ runner.os }}-
           save-always: false
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-overwrite-existing: false
 
       - name: Build release APK
         env:
-          # gradle.properties owns heap + parallelism settings.
-          # Only override what the properties file cannot express.
-          GRADLE_OPTS: "-XX:+HeapDumpOnOutOfMemoryError"
+          # Serial GC is faster than G1/ZGC for short-lived --no-daemon
+          # processes: no GC thread startup, no region sizing overhead.
+          JAVA_TOOL_OPTIONS: "-XX:+UseSerialGC"
         run: |
           ./gradlew assembleRelease \
             --build-cache \
