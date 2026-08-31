@@ -214,8 +214,8 @@ class MainActivity : ComponentActivity() {
                         AppPreferences.setRebootAfterInstall(this, enabled)
                         rebootAfterInstall = enabled
                     },
-                    // rebootUserspace: null  →  global pref wins
-                    // rebootUserspace: true/false  →  override for this attempt only
+                    // rebootUserspace: null  ->  global pref wins
+                    // rebootUserspace: true/false  ->  override for this attempt only
                     openInstaller = { profileId, payloadUris, rebootUserspace ->
                         val installer = Intent(this, InstallActivity::class.java)
                             .putExtra(InstallActivity.EXTRA_INSTALL_REQUEST_ID, UUID.randomUUID().toString())
@@ -347,7 +347,7 @@ private fun RootApp(
     onShizukuModeChanged: (Boolean) -> Unit,
     onLocalPayloadModeChanged: (Boolean) -> Unit,
     onRebootAfterInstallChanged: (Boolean) -> Unit,
-    // rebootUserspace: null → honour global pref; true/false → one-shot override
+    // rebootUserspace: null -> honour global pref; true/false -> one-shot override
     openInstaller: (String?, Map<String, Uri>, Boolean?) -> Unit,
 ) {
     val installState by installViewModel.state.collectAsStateWithLifecycle()
@@ -355,7 +355,7 @@ private fun RootApp(
     val targetCatalog by installViewModel.targetCatalog.collectAsStateWithLifecycle()
     var selectedPage by remember { mutableStateOf(AppPage.Overview) }
     var showInstallConfirmation by remember { mutableStateOf(false) }
-    // Per-attempt reboot toggle state — reset each time the confirmation dialog opens.
+    // Per-attempt reboot toggle state -- reset each time the confirmation dialog opens.
     var confirmRebootUserspace by remember { mutableStateOf(false) }
     var showTargetPicker by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<TargetProfile?>(null) }
