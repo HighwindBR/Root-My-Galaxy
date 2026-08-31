@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Root My Galaxy</string>
-    <string name="nav_overview">Home</string>
-    <string name="nav_history">Run History</string>
-    <string name="nav_settings">Settings</string>
-    <string name="install_confirm_title">Install KernelSU?</string>
-    <string name="install_confirm_body">The app will verify the supported configuration, then download and run the exploit and KernelSU payload from GitHub.</string>
-    <string name="install_confirm_source">Please select whether to download the payload online or use a payload file stored on this device.</string>
+
+    <!-- Navigation tabs -->
+    <string name="tab_home">Home</string>
+    <string name="tab_history">History</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Generic actions -->
     <string name="action_confirm">Confirm</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_close">Close</string>
@@ -16,83 +17,120 @@
     <string name="action_browse">Browse</string>
     <string name="action_select_all">Select all</string>
     <string name="action_deselect_all">Deselect all</string>
-    <string name="install_tap_manager">Tap to install KernelSU Manager</string>
-    <string name="install_tap_open_manager">Tap to open KernelSU Manager</string>
-    <string name="install_tap_retry">Tap to retry</string>
-    <string name="install_tap_start">Tap to install KernelSU</string>
-    <string name="manager_install_failed_open">Download failed — open GitHub releases</string>
-    <string name="device">Device</string>
-    <string name="how_it_works">How it works</string>
-    <string name="kernelsu_card_title">KernelSU</string>
-    <string name="kernelsu_card_description">Kernel-based Android root solution</string>
-    <string name="firmware">Firmware</string>
-    <string name="system">System</string>
-    <string name="kernel">Kernel</string>
-    <string name="system_abi">System ABI</string>
-    <string name="settings">Settings</string>
-    <string name="version_format">%1$s (%2$d)</string>
-    <string name="language">Language</string>
-    <string name="language_description">Select app language</string>
-    <string name="appearance">Appearance</string>
+    <string name="action_continue">Ignore and continue</string>
+    <string name="action_next">Next</string>
+    <string name="action_clear_all">Clear all</string>
+    <string name="action_delete_selected">Delete (%1$d)</string>
+
+    <!-- Home screen — payload card -->
+    <string name="card_device_title">Device</string>
+    <string name="card_payload_title">Payload</string>
+    <string name="card_steps_title">How it works</string>
+    <string name="action_select_payload">Select payload</string>
+    <string name="action_change_payload">Change payload</string>
+    <string name="action_root">Root</string>
+    <string name="action_stop">Stop</string>
+    <string name="install_running">Running…</string>
+
+    <!-- Device info rows -->
+    <string name="device_model">Model</string>
+    <string name="device_kernel">Kernel</string>
+    <string name="device_android">Android</string>
+    <string name="device_security_patch">Security patch</string>
+
+    <!-- Root status card -->
+    <string name="root_status_rooted">Rooted</string>
+    <string name="root_status_not_rooted">Not rooted</string>
+    <string name="root_ksu_version">KernelSU %1$s</string>
+
+    <!-- Per-attempt reboot userspace toggle (payload card) -->
+    <string name="option_reboot_userspace">Reboot userspace after root</string>
+    <string name="option_reboot_userspace_detail">Applies to this attempt only</string>
+
+    <!-- Target selection sheet -->
+    <string name="select_target_title">Select payload</string>
+    <string name="target_load_error">Failed to load payload list</string>
+    <string name="target_none_available">No payloads available</string>
+    <string name="target_incompatible">Incompatible with this device</string>
+
+    <!-- History screen -->
+    <string name="history_empty">No run history</string>
+    <string name="history_count">%1$d entries</string>
+    <string name="history_local_payload">Local payload</string>
+    <string name="dialog_clear_history_title">Clear history?</string>
+    <string name="dialog_clear_history_body">All run history and logs will be permanently deleted.</string>
+    <string name="dialog_delete_selected_title">Delete selected?</string>
+    <string name="dialog_delete_selected_body">%1$d selected entries and their logs will be permanently deleted.</string>
+
+    <!-- Settings screen -->
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_accent_color">Accent color</string>
+    <string name="settings_theme_mode">Theme</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_section_behavior">Behavior</string>
+    <string name="settings_advanced_mode">Advanced mode</string>
+    <string name="settings_advanced_mode_detail">Manually select a device-compatible payload during installation</string>
+    <string name="settings_shizuku">Use Shizuku</string>
+    <string name="settings_shizuku_detail">Run the payload using Shizuku, which may improve reliability</string>
+    <string name="settings_auto_reroot">Auto re-root on boot</string>
+    <string name="settings_auto_reroot_detail">Automatically re-apply root on every boot</string>
+    <string name="settings_local_payload">Use local payload</string>
+    <string name="settings_local_payload_detail">Select a payload file from this device instead of downloading from GitHub</string>
+    <string name="settings_section_about">About</string>
+    <string name="settings_about">About Root My Galaxy</string>
+
+    <!-- Theme mode labels -->
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="material_color">Theme</string>
-    <string name="material_color_description">Change appearance</string>
-    <string name="language_system">System Default</string>
-    <string name="language_korean" translatable="false">한국어</string>
-    <string name="language_english" translatable="false">English</string>
-    <string name="language_japanese" translatable="false">日本語</string>
-    <string name="language_chinese" translatable="false">简体中文</string>
-    <string name="language_chinese_traditional" translatable="false">繁體中文</string>
-    <string name="language_turkish" translatable="false">Türkçe</string>
-    <string name="language_brazillian_portuguese" translatable="false">Português Brasileiro</string>
-    <string name="language_russian" translatable="false">Русский</string>
-    <string name="language_vietnamese" translatable="false">Tiếng Việt</string>
-    <string name="language_uzbek" translatable="false">O\'zbek</string>
-    <string name="color_dynamic">System Dynamic Color</string>
-    <string name="color_blue">Blue</string>
-    <string name="color_violet">Violet</string>
-    <string name="color_green">Green</string>
-    <string name="color_orange">Orange</string>
-    <string name="history_title">Run History</string>
-    <string name="history_empty_title">No run history</string>
-    <string name="history_empty_description">After execution, results and logs will appear here.</string>
-    <string name="history_empty">No run history</string>
-    <string name="history_running">Running</string>
-    <string name="history_succeeded">Success</string>
-    <string name="history_failed">Failed</string>
-    <string name="history_detail_title">Run Details</string>
-    <string name="history_started">Started: %1$s</string>
-    <string name="history_completed">Completed: %1$s</string>
-    <string name="history_log">Execution log</string>
-    <string name="history_log_empty">No log output.</string>
-    <string name="history_payload">Payload: %1$s</string>
-    <string name="history_local_payload">Local payload</string>
-    <string name="history_shizuku_used">Shizuku used</string>
-    <string name="history_shizuku_not_used">Shizuku not used</string>
-    <string name="export_log">Export log</string>
-    <string name="export_log_saved">Log saved</string>
-    <string name="export_log_failed">Failed to save log</string>
-    <string name="about">About</string>
-    <string name="about_title">About Root My Galaxy</string>
-    <string name="about_description">About Root My Galaxy</string>
-    <string name="about_body">A one-click installer that uses kernel vulnerabilities to root supported Samsung Galaxy devices.</string>
 
-    <string name="install_title">Install</string>
-    <string name="install_keep_open">Please keep this screen open until installation completes</string>
-    <string name="install_live_progress">Log</string>
-    <string name="install_preparing">Preparing…</string>
-    <string name="step_support_title">Support Check</string>
-    <string name="step_support_detail">Verify device and firmware configuration</string>
-    <string name="step_download_title">Download</string>
-    <string name="step_download_detail">Load support manifest</string>
+    <!-- Accent color labels -->
+    <string name="accent_dynamic">System Dynamic Color</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_violet">Violet</string>
+    <string name="accent_green">Green</string>
+    <string name="accent_purple">Purple</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_orange">Orange</string>
+    <string name="accent_pink">Pink</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_yellow">Yellow</string>
+    <string name="accent_monochrome">Monochrome</string>
+
+    <!-- Language options -->
+    <string name="language_system">System Default</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="language_korean" translatable="false">한국어</string>
+    <string name="language_spanish" translatable="false">Español</string>
+    <string name="language_french" translatable="false">Français</string>
+    <string name="language_german" translatable="false">Deutsch</string>
+    <string name="language_japanese" translatable="false">日本語</string>
+    <string name="language_chinese_simplified" translatable="false">简体中文</string>
+
+    <!-- About sheet -->
+    <string name="about_body">A one-click installer that uses kernel vulnerabilities to root supported Samsung Galaxy devices.</string>
+    <string name="about_github">View on GitHub</string>
+
+    <!-- Steps card -->
     <string name="step_exploit_title">Kernel Exploit</string>
     <string name="step_exploit_detail">Get bootstrap root</string>
     <string name="step_ksu_title">Load KernelSU</string>
     <string name="step_ksu_detail">Late-load module and verify control channel</string>
     <string name="step_reboot_title">Userspace Reboot</string>
     <string name="step_reboot_detail">Trigger userspace reboot to activate modules</string>
+
+    <!-- Install / progress -->
+    <string name="install_title">Install</string>
+    <string name="install_keep_open">Please keep this screen open until installation completes</string>
+    <string name="install_live_progress">Log</string>
+    <string name="install_preparing">Preparing…</string>
+    <string name="install_tap_start">Tap to install KernelSU</string>
+    <string name="install_tap_manager">Tap to install KernelSU Manager</string>
+    <string name="install_tap_open_manager">Tap to open KernelSU Manager</string>
+    <string name="install_tap_retry">Tap to retry</string>
+    <string name="manager_install_failed_open">Download failed — open GitHub releases</string>
+
+    <!-- Phase status messages -->
     <string name="phase_checking">Checking supported device and firmware</string>
     <string name="phase_ready">Ready to install</string>
     <string name="phase_downloading">Downloading pinned payload from GitHub</string>
@@ -100,7 +138,6 @@
     <string name="phase_loading_ksu">Loading KernelSU using acquired bootstrap root</string>
     <string name="phase_installed">KernelSU module and control channel verified</string>
     <string name="phase_failed">Please check the log below to see where it failed</string>
-    <!-- install_phase_* aliases used by InstallActivity -->
     <string name="install_phase_checking">Checking supported device and firmware</string>
     <string name="install_phase_ready">Ready to install</string>
     <string name="install_phase_downloading">Downloading pinned payload from GitHub</string>
@@ -109,39 +146,34 @@
     <string name="install_phase_installed">KernelSU module and control channel verified</string>
     <string name="install_phase_failed">Please check the log below to see where it failed</string>
 
+    <!-- Status messages -->
     <string name="status_ksu_active">KernelSU is enabled</string>
     <string name="status_not_installed">Not installed</string>
     <string name="status_support_failed">Support check failed</string>
     <string name="status_checking_github">Checking GitHub support manifest</string>
     <string name="status_downloading_payload">Downloading payload</string>
     <string name="status_staging_local_payload">Preparing local payload</string>
-    <string name="notification_channel_boot">Boot installation</string>
     <string name="status_exploit_running">Running kernel exploit</string>
     <string name="status_ksu_loading">Late-loading KernelSU</string>
     <string name="status_install_failed">Installation failed</string>
+    <string name="notification_channel_boot">Boot installation</string>
+
+    <!-- Logs -->
     <string name="log_profile">[+] Support configuration: %1$s</string>
     <string name="log_download_verified">[+] Payload download complete</string>
     <string name="log_profile_source">[*] Source: %1$s</string>
     <string name="log_kernelsu_source">[*] KernelSU source: %1$s</string>
-    <string name="payload_source_local">Local</string>
-    <string name="payload_source_remote">GitHub</string>
-    <string name="error_local_payload_unavailable">Local payload unavailable</string>
     <string name="log_install_complete">[+] Installation complete</string>
     <string name="log_bootstrap_root">[+] Bootstrap root acquired</string>
     <string name="log_ksu_staged">[+] KernelSU staging complete</string>
     <string name="log_ksu_control_verified">[+] KernelSU control channel verified</string>
     <string name="log_reboot_userspace">[*] Triggering userspace reboot…</string>
-    <string name="error_helper_unavailable">Cannot execute bootstrap helper</string>
-    <string name="error_exploit_stalled">Exploit log has not been updated for 90 seconds</string>
-    <string name="error_exploit_timeout">Exploit exceeded 15-minute limit</string>
-    <string name="error_payload_exit">Payload execution failed: %1$d%2$s</string>
-    <string name="error_success_marker">Exploit success marker not found</string>
-    <string name="error_ksu_stage">KernelSU staging failed: %1$s</string>
-    <string name="error_ksu_verify">KernelSU late-load or control verification failed (rc=%1$d): %2$s</string>
-    <string name="error_helper_timeout">KernelSU helper did not exit within 120 seconds%1$s</string>
-    <string name="error_boot_id">Cannot read current boot_id</string>
-    <string name="error_receipt">Cannot save installation verification result</string>
+    <string name="log_shizuku_prepare">[*] Preparing Shizuku execution</string>
+    <string name="log_shizuku_permission">[+] Shizuku permission granted</string>
 
+    <!-- Payload / repo -->
+    <string name="payload_source_local">Local</string>
+    <string name="payload_source_remote">GitHub</string>
     <string name="artifact_exploit">exploit</string>
     <string name="artifact_kernelsu">KernelSU</string>
     <string name="repo_no_profile">No compatible payload for this model and kernel version</string>
@@ -156,41 +188,31 @@
     <string name="repo_commit_invalid">Invalid commit SHA returned by GitHub</string>
     <string name="repo_url_invalid">Disallowed payload repository</string>
     <string name="repo_response_too_large">Response exceeds size limit</string>
-    <string name="open_github">Open GitHub</string>
-    <string name="github_card_title">Learn about Root My Galaxy</string>
-    <string name="github_card_description">View source code and usage instructions.</string>
-    <string name="action_continue">Ignore and continue</string>
-    <string name="action_next">Next</string>
-    <string name="advanced">Advanced</string>
-    <string name="advanced_mode">Advanced Mode</string>
-    <string name="advanced_mode_description">Manually select a device-compatible payload during installation</string>
-    <string name="shizuku_mode">Use Shizuku</string>
-    <string name="shizuku_mode_description">Run the payload using Shizuku, which may improve reliability.</string>
-    <string name="local_payload_mode">Use local payload</string>
-    <string name="local_payload_mode_description">Select a payload file from this device instead of downloading from GitHub</string>
-    <string name="local_payload_card_title">Use local payload</string>
-    <string name="local_payload_card_description">Select exploit and KernelSU files stored on this device</string>
-    <string name="local_payload_title">Local payload</string>
-    <string name="local_payload_exploit_label">Exploit (.so)</string>
-    <string name="local_payload_none">None selected</string>
-    <string name="local_payload_kernelsu_label">KernelSU (ksud)</string>
-    <string name="local_payload_optional">Optional</string>
-    <string name="shizuku_not_running_title">Shizuku is not running</string>
-    <string name="shizuku_not_running_body">Please start the Shizuku service via adb or root, grant permission to this app, and then enable this option.</string>
-    <string name="action_download_shizuku">Download Shizuku</string>
+    <string name="repo_profile_missing">Support configuration %1$s is no longer available</string>
+
+    <!-- Error messages -->
+    <string name="error_local_payload_unavailable">Local payload unavailable</string>
+    <string name="error_helper_unavailable">Cannot execute bootstrap helper</string>
+    <string name="error_exploit_stalled">Exploit log has not been updated for 90 seconds</string>
+    <string name="error_exploit_timeout">Exploit exceeded 15-minute limit</string>
+    <string name="error_payload_exit">Payload execution failed: %1$d%2$s</string>
+    <string name="error_success_marker">Exploit success marker not found</string>
+    <string name="error_ksu_stage">KernelSU staging failed: %1$s</string>
+    <string name="error_ksu_verify">KernelSU late-load or control verification failed (rc=%1$d): %2$s</string>
+    <string name="error_helper_timeout">KernelSU helper did not exit within 120 seconds%1$s</string>
+    <string name="error_boot_id">Cannot read current boot_id</string>
+    <string name="error_receipt">Cannot save installation verification result</string>
     <string name="error_shizuku_unavailable">Shizuku is not running. Please start Shizuku via adb or root first.</string>
     <string name="error_shizuku_permission">Shizuku permission not granted</string>
     <string name="error_shizuku_stage">Cannot deploy %1$s via Shizuku: %2$s</string>
-    <string name="log_shizuku_prepare">[*] Preparing Shizuku execution</string>
-    <string name="log_shizuku_permission">[+] Shizuku permission granted</string>
-    <string name="repo_profile_missing">Support configuration %1$s is no longer available</string>
-    <string name="select_device_title">Select payload</string>
-    <string name="select_device_description">Select payload by device model and kernel version.</string>
-    <string name="select_target_title">Select payload</string>
-    <string name="target_load_error">Failed to load payload list</string>
-    <string name="target_none_available">No payloads available</string>
-    <string name="target_incompatible">Incompatible with this device</string>
+
+    <!-- Local payload UI -->
     <string name="local_payload_display_name">Local payload</string>
+    <string name="local_payload_title">Local payload</string>
+    <string name="local_payload_exploit_label">Exploit (.so)</string>
+    <string name="local_payload_kernelsu_label">KernelSU (ksud)</string>
+    <string name="local_payload_none">None selected</string>
+    <string name="local_payload_optional">Optional</string>
     <string name="select_local_exploit_title">Select exploit payload</string>
     <string name="select_local_exploit_body">Please select the exploit shared library (.so) from this device.</string>
     <string name="select_local_kernelsu_title">Select KernelSU payload</string>
@@ -204,12 +226,16 @@
     <string name="local_exploit_selected">Exploit: %1$s</string>
     <string name="local_kernelsu_selected">KernelSU: %1$s</string>
     <string name="local_payload_exploit_required">Exploit payload must be selected</string>
+
+    <!-- Device / payload mismatch dialogs -->
     <string name="show_my_device_only">Show my device only</string>
     <string name="no_matching_devices">No payload matching this model and kernel version.</string>
     <string name="device_mismatch_title">Device mismatch</string>
     <string name="device_mismatch_body">The current device is %1$s, but the selected payload supports %2$s. Running it may cause the device to crash or become damaged.</string>
     <string name="kernel_version_mismatch_title">Kernel version mismatch</string>
     <string name="kernel_version_mismatch_body">The current kernel is %1$s, but the selected payload supports %2$s. Offsets may be incompatible.</string>
+
+    <!-- Updater -->
     <string name="updater_available_title">Update available</string>
     <string name="updater_available_body">A new version %1$s is available</string>
     <string name="updater_available_body_short">%1$s available</string>
@@ -220,10 +246,15 @@
     <string name="updater_checking">Checking for updates…</string>
     <string name="updater_up_to_date">Already up to date</string>
     <string name="updater_failed">Failed to check for updates</string>
-    <string name="history_delete">Delete</string>
-    <string name="history_select_all">Select all</string>
-    <string name="history_clear_selection">Clear selection</string>
-    <string name="history_delete_selected">Delete (%1$d)</string>
+
+    <!-- Misc -->
+    <string name="open_github">Open GitHub</string>
+    <string name="shizuku_not_running_title">Shizuku is not running</string>
+    <string name="shizuku_not_running_body">Please start the Shizuku service via adb or root, grant permission to this app, and then enable this option.</string>
+    <string name="action_download_shizuku">Download Shizuku</string>
+    <string name="hint_userspace_reboot_modules">Most KernelSU modules require a userspace reboot to become active. If modules are not loading, trigger a userspace reboot from the KernelSU Manager app or via \"ksud boot-completed\" in a root shell.</string>
+
+    <!-- History plurals / misc -->
     <plurals name="history_delete_selected_title">
         <item quantity="one">Delete this run?</item>
         <item quantity="other">Delete %1$d runs?</item>
@@ -236,36 +267,4 @@
         <item quantity="one">Delete %1$d run</item>
         <item quantity="other">Delete %1$d runs</item>
     </plurals>
-    <string name="settings_section_appearance">Appearance</string>
-    <string name="settings_theme">Theme</string>
-    <string name="settings_accent_color">Accent color</string>
-    <string name="settings_language">Language</string>
-    <string name="settings_section_advanced">Advanced</string>
-    <string name="settings_advanced_mode">Advanced mode</string>
-    <string name="settings_advanced_mode_description">Manually select a device-compatible payload during installation</string>
-    <string name="settings_shizuku_mode">Use Shizuku</string>
-    <string name="settings_shizuku_mode_description">Run the payload using Shizuku, which may improve reliability</string>
-    <string name="settings_local_payload_mode">Use local payload</string>
-    <string name="settings_local_payload_mode_description">Select a payload file from this device instead of downloading from GitHub</string>
-    <string name="settings_reboot_after_install">Reboot after install</string>
-    <string name="settings_reboot_after_install_description">Automatically trigger a userspace reboot once installation completes</string>
-    <string name="settings_section_about">About</string>
-    <string name="settings_version">Version</string>
-    <string name="settings_source_code">Source code</string>
-    <string name="accent_dynamic">System Dynamic Color</string>
-    <string name="accent_blue">Blue</string>
-    <string name="accent_violet">Violet</string>
-    <string name="accent_green">Green</string>
-    <string name="accent_purple">Purple</string>
-    <string name="accent_red">Red</string>
-    <string name="accent_orange">Orange</string>
-    <string name="accent_pink">Pink</string>
-    <string name="accent_teal">Teal</string>
-    <string name="accent_yellow">Yellow</string>
-    <string name="accent_monochrome">Monochrome</string>
-    <!-- Per-attempt toggle shown only inside the payload picker / confirm dialog -->
-    <string name="reboot_userspace_this_attempt">Reboot userspace after root</string>
-    <string name="reboot_userspace_this_attempt_description">Applies to this attempt only — overrides the global setting</string>
-    <!-- Shown on the install success screen when a userspace reboot was not triggered automatically -->
-    <string name="hint_userspace_reboot_modules">Most KernelSU modules require a userspace reboot to become active. If modules are not loading, trigger a userspace reboot from the KernelSU Manager app or via \"ksud boot-completed\" in a root shell.</string>
 </resources>
