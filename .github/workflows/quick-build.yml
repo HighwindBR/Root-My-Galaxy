@@ -21,6 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 18
 
+    env:
+      # Point Gradle's NDK resolution directly at the cached path so the
+      # nttld/setup-ndk action is a no-op on warm runs.
+      NDK_VERSION: r28
+      NDK_CACHE_PATH: ${{ github.workspace }}/../ndk-r28
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,27 +38,45 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      # ubuntu-latest already ships platform-tools and a base SDK;
-      # only install the components that are actually missing.
-      - name: Install missing SDK components
-        run: |
-          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-37" \
-            "build-tools;35.0.0" \
-            "cmake;3.22.1" 2>/dev/null || true
-
+      # Cache the full NDK tree. On a hit the nttld step becomes a fast
+      # symlink; on a miss it downloads once and the cache is populated.
       - name: Cache NDK r28
         id: cache-ndk
         uses: actions/cache@v4
         with:
-          path: ${{ runner.tool_cache }}/ndk/r28
-          key: ndk-r28-${{ runner.os }}
+          path: ${{ env.NDK_CACHE_PATH }}
+          key: ndk-r28-${{ runner.os }}-v2
+          save-always: false
 
       - name: Set up NDK r28
         uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
-          ndk-version: r28
+          ndk-version: ${{ env.NDK_VERSION }}
           local_cache: true
+          add-to-path: false
+
+      # Expose NDK to Gradle via env vars so no local.properties edit
+      # is needed. Both vars are checked by the Android Gradle Plugin.
+      - name: Export NDK env vars
+        run: |
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+
+      # ubuntu-latest ships API 35, build-tools 35.0.0, and cmake 3.22.1.
+      # Only install what is genuinely missing; skip entirely if all present.
+      - name: Install missing SDK components
+        run: |
+          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          NEED=""
+          [[ -d "${ANDROID_SDK_ROOT}/platforms/android-35" ]]    || NEED+=" platforms;android-35"
+          [[ -d "${ANDROID_SDK_ROOT}/build-tools/35.0.0" ]]       || NEED+=" build-tools;35.0.0"
+          [[ -d "${ANDROID_SDK_ROOT}/cmake/3.22.1" ]]              || NEED+=" cmake;3.22.1"
+          if [[ -n "$NEED" ]]; then
+            yes | "$SDKMANAGER" $NEED 2>/dev/null || true
+          else
+            echo "All required SDK components already present, skipping sdkmanager."
+          fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -61,14 +85,17 @@ jobs:
 
       - name: Build release APK
         env:
-          GRADLE_OPTS: "-Xmx5g -XX:+HeapDumpOnOutOfMemoryError"
+          GRADLE_OPTS: >-
+            -Xmx5g
+            -XX:+HeapDumpOnOutOfMemoryError
+            -Dkotlin.incremental=false
+            -Dkotlin.compiler.execution.strategy=in-process
         run: |
           ./gradlew assembleRelease \
             --build-cache \
             --parallel \
             --configuration-cache \
             --no-daemon \
-            -Dkotlin.incremental=false \
             --console=plain
 
       - name: Upload release APK
