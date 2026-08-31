@@ -121,1023 +121,424 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.busung.s25uroot.ui.theme.RootMyGalaxyTheme
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormat
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
-import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
-    private val installViewModel by viewModels<InstallViewModel>()
-    private var resumedOnce = false
-    private var accentColor by mutableStateOf(AccentColor.Dynamic)
-    private var themeMode by mutableStateOf(AppThemeMode.System)
-    private var advancedMode by mutableStateOf(false)
-    private var shizukuMode by mutableStateOf(false)
-    private var localPayloadMode by mutableStateOf(false)
-    private var rebootAfterInstall by mutableStateOf(false)
+    private val installViewModel: InstallViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        window.isNavigationBarContrastEnforced = false
-        accentColor = AppPreferences.accentColor(this)
-        themeMode = AppPreferences.themeMode(this)
-        advancedMode = AppPreferences.advancedMode(this)
-        shizukuMode = AppPreferences.shizukuMode(this)
-        localPayloadMode = AppPreferences.localPayloadMode(this)
-        rebootAfterInstall = AppPreferences.rebootAfterInstall(this)
         setContent {
-            RootMyGalaxyTheme(accentColor = accentColor, themeMode = themeMode) {
-                RootApp(
-                    installViewModel = installViewModel,
-                    accentColor = accentColor,
-                    themeMode = themeMode,
-                    advancedMode = advancedMode,
-                    shizukuMode = shizukuMode,
-                    localPayloadMode = localPayloadMode,
-                    rebootAfterInstall = rebootAfterInstall,
-                    onAccentColorChanged = { color ->
-                        AppPreferences.setAccentColor(this, color)
-                        accentColor = color
-                    },
-                    onThemeModeChanged = { mode ->
-                        AppPreferences.setThemeMode(this, mode)
-                        themeMode = mode
-                    },
-                    onAdvancedModeChanged = { enabled ->
-                        AppPreferences.setAdvancedMode(this, enabled)
-                        advancedMode = enabled
-                    },
-                    onShizukuModeChanged = { enabled ->
-                        AppPreferences.setShizukuMode(this, enabled)
-                        shizukuMode = enabled
-                    },
-                    onLocalPayloadModeChanged = { enabled ->
-                        AppPreferences.setLocalPayloadMode(this, enabled)
-                        localPayloadMode = enabled
-                    },
-                    onRebootAfterInstallChanged = { enabled ->
-                        AppPreferences.setRebootAfterInstall(this, enabled)
-                        rebootAfterInstall = enabled
-                    },
-                    openInstaller = { profileId, payloadUris, rebootUserspace ->
-                        val installer = Intent(this, InstallActivity::class.java)
-                            .putExtra(InstallActivity.EXTRA_INSTALL_REQUEST_ID, UUID.randomUUID().toString())
-                        if (profileId != null) {
-                            installer.putExtra(InstallActivity.EXTRA_PROFILE_ID, profileId)
-                        }
-                        payloadUris.forEach { (key, uri) ->
-                            installer.putExtra(
-                                InstallActivity.EXTRA_LOCAL_PAYLOAD_PREFIX + key,
-                                uri.toString(),
-                            )
-                        }
-                        if (rebootUserspace != null) {
-                            installer.putExtra(InstallActivity.EXTRA_REBOOT_USERSPACE, rebootUserspace)
-                        }
-                        startActivity(installer)
-                    },
-                )
+            val accentColor by installViewModel.accentColor.collectAsStateWithLifecycle()
+            val themeMode by installViewModel.themeMode.collectAsStateWithLifecycle()
+            RootMyGalaxyTheme(
+                accentColor = accentColor,
+                themeMode = themeMode,
+            ) {
+                RootMyGalaxyApp(installViewModel)
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (resumedOnce) installViewModel.refresh() else resumedOnce = true
-    }
-}
-
-private enum class AppPage(@StringRes val label: Int, val icon: ImageVector) {
-    Overview(R.string.nav_overview, Icons.Rounded.Home),
-    History(R.string.nav_history, Icons.Rounded.History),
-    Settings(R.string.nav_settings, Icons.Rounded.Settings),
-}
-
-private data class LanguageOption(@StringRes val label: Int, val tag: String)
-
-private enum class CompatibilityWarning {
-    Device,
-    KernelVersion,
-}
-
-private val languageOptions = listOf(
-    LanguageOption(R.string.language_system, ""),
-    LanguageOption(R.string.language_korean, "ko"),
-    LanguageOption(R.string.language_english, "en"),
-    LanguageOption(R.string.language_japanese, "ja"),
-    LanguageOption(R.string.language_chinese, "zh-CN"),
-    LanguageOption(R.string.language_chinese_traditional, "zh-TW"),
-    LanguageOption(R.string.language_turkish, "tr"),
-    LanguageOption(R.string.language_brazillian_portuguese, "pt-BR"),
-    LanguageOption(R.string.language_russian, "ru"),
-    LanguageOption(R.string.language_vietnamese, "vi"),
-    LanguageOption(R.string.language_uzbek, "uz"),
-)
-
-private const val KERNEL_SU_MANAGER_URL =
-    "https://github.com/tiann/KernelSU/releases/latest"
-private const val KERNEL_SU_MANAGER_PACKAGE = "me.weishu.kernelsu"
-private const val KERNEL_SU_HOME_URL = "https://kernelsu.org/"
-private const val SHIZUKU_MANAGER_PACKAGE = "moe.shizuku.manager"
-private const val SHIZUKU_MANAGER_URL = "https://github.com/thedjchi/Shizuku/releases/"
-private const val KERNEL_SU_MANAGER_API_URL =
-    "https://api.github.com/repos/tiann/KernelSU/releases/latest"
-
-private fun isKernelSuManagerInstalled(context: Context): Boolean =
-    context.packageManager.getLaunchIntentForPackage(KERNEL_SU_MANAGER_PACKAGE) != null
-
-private fun openKernelSuManager(context: Context) {
-    val launch = context.packageManager.getLaunchIntentForPackage(KERNEL_SU_MANAGER_PACKAGE)
-    if (launch != null) {
-        context.startActivity(launch)
-    } else {
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                val connection = java.net.URL(KERNEL_SU_MANAGER_API_URL).openConnection() as java.net.HttpURLConnection
-                connection.setRequestProperty("Accept", "application/vnd.github+json")
-                connection.setRequestProperty("User-Agent", context.packageName)
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                val release = org.json.JSONObject(body)
-                val assets = release.getJSONArray("assets")
-
-                var apkUrl: String? = null
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url")
-                        break
-                    }
-                }
-
-                val targetUrl = apkUrl ?: KERNEL_SU_MANAGER_URL
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
-                }
-            } catch (_: Exception) {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(KERNEL_SU_MANAGER_URL)))
-                }
-            }
-        }
-    }
-}
-
-private fun openShizukuManager(context: Context) {
-    val launch = context.packageManager.getLaunchIntentForPackage(SHIZUKU_MANAGER_PACKAGE)
-    if (launch != null) {
-        context.startActivity(launch)
-    } else {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SHIZUKU_MANAGER_URL)))
     }
 }
 
 @Composable
-private fun RootApp(
-    installViewModel: InstallViewModel,
-    accentColor: AccentColor,
-    themeMode: AppThemeMode,
-    advancedMode: Boolean,
-    shizukuMode: Boolean,
-    localPayloadMode: Boolean,
-    rebootAfterInstall: Boolean,
-    onAccentColorChanged: (AccentColor) -> Unit,
-    onThemeModeChanged: (AppThemeMode) -> Unit,
-    onAdvancedModeChanged: (Boolean) -> Unit,
-    onShizukuModeChanged: (Boolean) -> Unit,
-    onLocalPayloadModeChanged: (Boolean) -> Unit,
-    onRebootAfterInstallChanged: (Boolean) -> Unit,
-    openInstaller: (String?, Map<String, Uri>, Boolean?) -> Unit,
-) {
-    val installState by installViewModel.state.collectAsStateWithLifecycle()
-    val history by installViewModel.history.collectAsStateWithLifecycle()
-    val targetCatalog by installViewModel.targetCatalog.collectAsStateWithLifecycle()
-    var selectedPage by remember { mutableStateOf(AppPage.Overview) }
-    var showInstallConfirmation by remember { mutableStateOf(false) }
-    var confirmRebootUserspace by remember { mutableStateOf(false) }
-    var showTargetPicker by remember { mutableStateOf(false) }
-    var selectedProfile by remember { mutableStateOf<TargetProfile?>(null) }
-    var compatibilityWarning by remember { mutableStateOf<CompatibilityWarning?>(null) }
-    var showLocalPayloadPicker by remember { mutableStateOf<TargetProfile?>(null) }
-    val device = remember { DeviceSnapshot.current() }
+private fun RootMyGalaxyApp(installViewModel: InstallViewModel) {
     val context = LocalContext.current
-    val view = LocalView.current
-    val scope = rememberCoroutineScope()
-    var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
-    var updateCardDismissed by remember { mutableStateOf(false) }
-    val checkForUpdate: () -> Unit = {
-        if (!updateStatus.busy) {
-            updateStatus = UpdateStatus.Checking
-            scope.launch {
-                val info = AppUpdater.fetchLatestRelease()
-                updateStatus = when {
-                    info == null -> UpdateStatus.Failed
-                    AppUpdater.isUpdateAvailable(info.versionName, BuildConfig.VERSION_NAME) ->
-                        UpdateStatus.Available(info)
-                    else -> UpdateStatus.UpToDate
-                }
-            }
+    val uiState by installViewModel.uiState.collectAsStateWithLifecycle()
+    val targetCatalog by installViewModel.targetCatalog.collectAsStateWithLifecycle()
+    val installHistory by installViewModel.installHistory.collectAsStateWithLifecycle()
+
+    var currentTab by rememberSaveable { mutableStateOf(AppTab.Home) }
+    var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var showHistorySheet by rememberSaveable { mutableStateOf(false) }
+    var showTargetSheet by rememberSaveable { mutableStateOf(false) }
+    var rebootUserspace by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.pendingInstallRequest) {
+        if (uiState.pendingInstallRequest != null) {
+            installViewModel.consumePendingInstallRequest()
         }
-    }
-    val startDownload: (UpdateInfo) -> Unit = { info ->
-        val apkUrl = info.apkUrl
-        if (apkUrl == null) {
-            AppUpdater.openReleasesPage(context)
-        } else {
-            updateStatus = UpdateStatus.Downloading(info, 0f)
-            scope.launch {
-                val apk = AppUpdater.downloadApk(context, apkUrl) { progress ->
-                    updateStatus = UpdateStatus.Downloading(info, progress)
-                }
-                if (apk == null || !AppUpdater.installApk(context, apk)) {
-                    Toast.makeText(context, context.getString(R.string.updater_download_failed), Toast.LENGTH_SHORT).show()
-                    AppUpdater.openReleasesPage(context)
-                }
-                updateStatus = UpdateStatus.Available(info)
-            }
-        }
-    }
-    LaunchedEffect(Unit) { checkForUpdate() }
-
-    val openLocalPayloadPicker: (String?) -> Unit = { profileId ->
-        val profile = targetCatalog.profiles.firstOrNull { it.profileId == profileId }
-        if (profile == null) {
-            showLocalPayloadPicker = TargetProfile(
-                profileId = InstallViewModel.LOCAL_PROFILE_ID,
-                displayName = "",
-                models = setOf(device.model),
-                kernelVersions = setOf(device.kernelVersion),
-                exploit = RemoteArtifact("", -1L),
-                kernelSu = RemoteArtifact("", -1L),
-                requiresFreshP0Session = false,
-            )
-        } else {
-            showLocalPayloadPicker = profile
-        }
-    }
-
-
-    if (showTargetPicker) {
-        TargetSelectionSheet(
-            device = device,
-            catalog = targetCatalog,
-            onDismiss = { showTargetPicker = false },
-            onRetry = installViewModel::loadTargetCatalog,
-            onNext = { profile ->
-                selectedProfile = profile
-                showTargetPicker = false
-                compatibilityWarning = when {
-                    !profile.matchesDevice(device) -> CompatibilityWarning.Device
-                    !profile.matchesKernelVersion(device) -> CompatibilityWarning.KernelVersion
-                    else -> null
-                }
-                if (compatibilityWarning == null) {
-                    confirmRebootUserspace = rebootAfterInstall
-                    showInstallConfirmation = true
-                }
-            },
-        )
-    }
-
-    compatibilityWarning?.let { warning ->
-        val profile = selectedProfile ?: return@let
-        AlertDialog(
-            onDismissRequest = {
-                compatibilityWarning = null
-                showTargetPicker = true
-            },
-            icon = { Icon(Icons.Rounded.Warning, contentDescription = null) },
-            title = {
-                DialogDimAmount(0.34f)
-                Text(
-                    stringResource(when (warning) {
-                        CompatibilityWarning.Device -> R.string.device_mismatch_title
-                        CompatibilityWarning.KernelVersion -> R.string.kernel_version_mismatch_title
-                    }),
-                )
-            },
-            text = {
-                Text(
-                    when (warning) {
-                        CompatibilityWarning.Device -> stringResource(
-                            R.string.device_mismatch_body,
-                            device.model,
-                            profile.supportedModels,
-                        )
-                        CompatibilityWarning.KernelVersion -> stringResource(
-                            R.string.kernel_version_mismatch_body,
-                            device.kernelVersion,
-                            profile.supportedKernelVersions,
-                        )
-                    },
-                )
-            },
-            confirmButton = {
-                FilledTonalButton(
-                    onClick = {
-                        clickHaptic(view)
-                        compatibilityWarning = when (warning) {
-                            CompatibilityWarning.Device -> if (!profile.matchesKernelVersion(device)) {
-                                CompatibilityWarning.KernelVersion
-                            } else {
-                                null
-                            }
-                            CompatibilityWarning.KernelVersion -> null
-                        }
-                        if (compatibilityWarning == null) {
-                            confirmRebootUserspace = rebootAfterInstall
-                            showInstallConfirmation = true
-                        }
-                    },
-                ) {
-                    Text(stringResource(R.string.action_continue))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        clickHaptic(view)
-                        compatibilityWarning = null
-                        showTargetPicker = true
-                    },
-                ) {
-                    Text(stringResource(R.string.action_back))
-                }
-            },
-        )
-    }
-
-    if (showInstallConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showInstallConfirmation = false },
-            icon = { Icon(Icons.Rounded.Security, contentDescription = null) },
-            title = {
-                DialogDimAmount(0.34f)
-                Text(stringResource(R.string.install_confirm_title))
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.install_confirm_body))
-                    Text(
-                        stringResource(R.string.install_confirm_source),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    // Per-attempt reboot userspace toggle
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .toggleable(
-                                value = confirmRebootUserspace,
-                                role = Role.Switch,
-                                onValueChange = {
-                                    clickHaptic(view)
-                                    confirmRebootUserspace = it
-                                },
-                            )
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(
-                            Icons.Rounded.RestartAlt,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.reboot_userspace_this_attempt),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Text(
-                                stringResource(R.string.reboot_userspace_this_attempt_description),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = confirmRebootUserspace,
-                            onCheckedChange = null,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                FilledTonalButton(onClick = {
-                    clickHaptic(view)
-                    showInstallConfirmation = false
-                    openInstaller(selectedProfile?.profileId, emptyMap(), confirmRebootUserspace)
-                    selectedProfile = null
-                }) {
-                    Text(stringResource(R.string.action_use_online_payload))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    clickHaptic(view)
-                    showInstallConfirmation = false
-                    openLocalPayloadPicker(selectedProfile?.profileId)
-                    selectedProfile = null
-                }) {
-                    Text(stringResource(R.string.action_use_local_payload))
-                }
-            },
-        )
-    }
-
-    showLocalPayloadPicker?.let { profile ->
-        LocalPayloadPicker(
-            profileId = profile.profileId,
-            globalRebootUserspace = rebootAfterInstall,
-            onDismiss = { showLocalPayloadPicker = null },
-            onConfirm = { exploitUri: Uri, kernelSuUri: Uri?, rebootUserspace: Boolean ->
-                showLocalPayloadPicker = null
-                openInstaller(
-                    profile.profileId,
-                    buildMap {
-                        put(InstallViewModel.PAYLOAD_EXPLOIT, exploitUri)
-                        kernelSuUri?.let { put(InstallViewModel.PAYLOAD_KERNELSU, it) }
-                    },
-                    rebootUserspace,
-                )
-            },
-        )
     }
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                tonalElevation = 0.dp,
-            ) {
-                AppPage.entries.forEach { page ->
-                    NavigationBarItem(
-                        selected = selectedPage == page,
-                        onClick = {
-                            clickHaptic(view)
-                            selectedPage = page
-                        },
-                        modifier = Modifier.padding(top = 4.dp),
-                        icon = { Icon(page.icon, contentDescription = null) },
-                        label = { Text(stringResource(page.label)) },
-                    )
-                }
+            NavigationBar {
+                NavigationBarItem(
+                    icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
+                    label = { Text(stringResource(R.string.tab_home)) },
+                    selected = currentTab == AppTab.Home,
+                    onClick = { currentTab = AppTab.Home },
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Rounded.History, contentDescription = null) },
+                    label = { Text(stringResource(R.string.tab_history)) },
+                    selected = currentTab == AppTab.History,
+                    onClick = { currentTab = AppTab.History },
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
+                    label = { Text(stringResource(R.string.tab_settings)) },
+                    selected = currentTab == AppTab.Settings,
+                    onClick = { currentTab = AppTab.Settings },
+                )
             }
         },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-    ) { padding ->
-        AnimatedContent(targetState = selectedPage, label = "page") { page ->
-            when (page) {
-                AppPage.Overview -> OverviewPage(
-                    padding = padding,
-                    device = device,
-                    installState = installState,
-                    updateStatus = updateStatus,
-                    updateCardDismissed = updateCardDismissed,
-                    localPayloadMode = localPayloadMode,
-                    onDismissUpdateCard = { updateCardDismissed = true },
-                    onStartDownload = startDownload,
-                    onInstall = {
-                        selectedProfile = null
-                        if (localPayloadMode) {
-                            selectedProfile = null
-                            showLocalPayloadPicker = TargetProfile(
-                                profileId = InstallViewModel.LOCAL_PROFILE_ID,
-                                displayName = "",
-                                models = setOf(device.model),
-                                kernelVersions = setOf(device.kernelVersion),
-                                exploit = RemoteArtifact("", -1L),
-                                kernelSu = RemoteArtifact("", -1L),
-                                requiresFreshP0Session = false,
-                            )
-                        } else if (advancedMode) {
-                            showTargetPicker = true
-                            installViewModel.loadTargetCatalog()
-                        } else {
-                            confirmRebootUserspace = rebootAfterInstall
-                            showInstallConfirmation = true
-                        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            when (currentTab) {
+                AppTab.Home -> HomeScreen(
+                    uiState = uiState,
+                    rebootUserspace = rebootUserspace,
+                    onRebootUserspaceChanged = { rebootUserspace = it },
+                    onSelectPayload = {
+                        installViewModel.loadTargetCatalog()
+                        showTargetSheet = true
                     },
-                    onLocalPayload = {
-                        selectedProfile = null
-                        showLocalPayloadPicker = TargetProfile(
-                            profileId = InstallViewModel.LOCAL_PROFILE_ID,
-                            displayName = "",
-                            models = setOf(device.model),
-                            kernelVersions = setOf(device.kernelVersion),
-                            exploit = RemoteArtifact("", -1L),
-                            kernelSu = RemoteArtifact("", -1L),
-                            requiresFreshP0Session = false,
-                        )
+                    onStartRoot = {
+                        installViewModel.startRoot(rebootUserspace = rebootUserspace)
+                        rebootUserspace = false
                     },
+                    onStopSession = installViewModel::stopSession,
                 )
-                AppPage.History -> HistoryPage(
-                    padding,
-                    history,
-                    onDeleteEntries = installViewModel::deleteHistoryEntries,
+                AppTab.History -> HistoryScreen(
+                    entries = installHistory,
+                    onDelete = installViewModel::deleteHistoryEntry,
+                    onDeleteAll = installViewModel::deleteAllHistoryEntries,
                 )
-                AppPage.Settings -> SettingsPage(
-                    padding = padding,
-                    accentColor = accentColor,
-                    themeMode = themeMode,
-                    advancedMode = advancedMode,
-                    shizukuMode = shizukuMode,
-                    localPayloadMode = localPayloadMode,
-                    rebootAfterInstall = rebootAfterInstall,
-                    updateStatus = updateStatus,
-                    onCheckForUpdate = checkForUpdate,
-                    onStartDownload = startDownload,
-                    onAccentColorChanged = onAccentColorChanged,
-                    onThemeModeChanged = onThemeModeChanged,
-                    onAdvancedModeChanged = onAdvancedModeChanged,
-                    onShizukuModeChanged = onShizukuModeChanged,
-                    onLocalPayloadModeChanged = onLocalPayloadModeChanged,
-                    onRebootAfterInstallChanged = onRebootAfterInstallChanged,
+                AppTab.Settings -> SettingsScreen(
+                    installViewModel = installViewModel,
                 )
             }
         }
     }
+
+    if (showTargetSheet) {
+        TargetSelectionSheet(
+            device = uiState.device,
+            catalog = targetCatalog,
+            onDismiss = { showTargetSheet = false },
+            onRetry = installViewModel::loadTargetCatalog,
+            onNext = { profile ->
+                showTargetSheet = false
+                installViewModel.selectProfile(profile)
+            },
+        )
+    }
 }
 
+enum class AppTab { Home, History, Settings }
+
 @Composable
-private fun AppVersionText(
-    style: TextStyle,
-    color: Color,
+private fun HomeScreen(
+    uiState: InstallUiState,
+    rebootUserspace: Boolean,
+    onRebootUserspaceChanged: (Boolean) -> Unit,
+    onSelectPayload: () -> Unit,
+    onStartRoot: () -> Unit,
+    onStopSession: () -> Unit,
 ) {
-    Text(
-        text = stringResource(
-            R.string.version_format,
-            BuildConfig.VERSION_NAME,
-            BuildConfig.VERSION_CODE,
-        ),
-        style = style,
-        color = color,
-    )
-}
-
-private fun clickHaptic(view: View) {
-    view.performHapticFeedback(
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            HapticFeedbackConstants.CONFIRM
-        } else {
-            HapticFeedbackConstants.LONG_PRESS
-        },
-    )
-}
-
-@Composable
-private fun DialogDimAmount(amount: Float) {
-    val window = (LocalView.current.parent as DialogWindowProvider).window
-    SideEffect { window.setDimAmount(amount) }
-}
-
-@Composable
-private fun OverviewPage(
-    padding: PaddingValues,
-    device: DeviceSnapshot,
-    installState: InstallUiState,
-    updateStatus: UpdateStatus,
-    updateCardDismissed: Boolean,
-    localPayloadMode: Boolean,
-    onDismissUpdateCard: () -> Unit,
-    onStartDownload: (UpdateInfo) -> Unit,
-    onInstall: () -> Unit,
-    onLocalPayload: () -> Unit,
-) {
+    val view = LocalView.current
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 54.dp, bottom = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_app_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(36.dp),
-                )
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineLarge,
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                AppVersionText(
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-                )
-            }
+            DeviceCard(uiState.device)
         }
-        if (
-            !updateCardDismissed &&
-            updateStatus.info != null
-        ) {
-            item {
-                UpdateCard(
-                    status = updateStatus,
-                    onDismiss = onDismissUpdateCard,
-                    onStartDownload = onStartDownload,
-                )
-            }
+        item {
+            RootStatusCard(uiState)
         }
-        if (!localPayloadMode) {
-            item { InstallStatusCard(installState, onInstall) }
-        }
-        if (localPayloadMode) {
-            item { LocalPayloadCard(onLocalPayload) }
-        }
-        item { DeviceCard(device) }
-        item { HowItWorksCard() }
-    }
-}
-
-private sealed interface UpdateStatus {
-    data object Idle : UpdateStatus
-    data object Checking : UpdateStatus
-    data class Available(val info: UpdateInfo) : UpdateStatus
-    data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateStatus
-    data object UpToDate : UpdateStatus
-    data object Failed : UpdateStatus
-}
-
-private val UpdateStatus.busy: Boolean
-    get() = this is UpdateStatus.Checking || this is UpdateStatus.Downloading
-
-private val UpdateStatus.info: UpdateInfo?
-    get() = when (this) {
-        is UpdateStatus.Available -> this.info
-        is UpdateStatus.Downloading -> this.info
-        else -> null
-    }
-
-@Composable
-private fun UpdateCard(
-    status: UpdateStatus,
-    onDismiss: () -> Unit,
-    onStartDownload: (UpdateInfo) -> Unit,
-) {
-    val view = LocalView.current
-    val info = status.info
-    if (info == null) return
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(
-                    Icons.Rounded.SystemUpdate,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                )
-                Text(
-                    text = stringResource(R.string.updater_available_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(
-                    onClick = {
-                        clickHaptic(view)
-                        onDismiss()
-                    },
-                    modifier = Modifier.size(24.dp),
-                ) {
-                    Icon(
-                        Icons.Rounded.Close,
-                        contentDescription = stringResource(R.string.action_close),
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
-            Text(
-                text = stringResource(R.string.updater_available_body, info.versionName),
-                style = MaterialTheme.typography.bodyMedium,
+        item {
+            PayloadCard(
+                uiState = uiState,
+                rebootUserspace = rebootUserspace,
+                onRebootUserspaceChanged = onRebootUserspaceChanged,
+                onSelectPayload = {
+                    clickHaptic(view)
+                    onSelectPayload()
+                },
+                onStartRoot = {
+                    clickHaptic(view)
+                    onStartRoot()
+                },
+                onStopSession = {
+                    clickHaptic(view)
+                    onStopSession()
+                },
             )
-            when (status) {
-                is UpdateStatus.Downloading -> {
-                    LinearProgressIndicator(
-                        progress = { status.progress },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = LocalContentColor.current,
-                        trackColor = LocalContentColor.current.copy(alpha = 0.2f),
-                        drawStopIndicator = {},
-                    )
-                    Text(
-                        text = stringResource(R.string.updater_downloading),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = LocalContentColor.current.copy(alpha = 0.78f),
-                    )
-                }
-                else -> {
-                    FilledTonalButton(onClick = {
-                        clickHaptic(view)
-                        onStartDownload(info)
-                    }) {
-                        Text(stringResource(R.string.updater_button_download))
-                    }
-                }
-            }
         }
-    }
-}
-
-@Composable
-private fun HowItWorksCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text(stringResource(R.string.how_it_works), style = MaterialTheme.typography.titleMedium)
-            installerSteps.forEach { step ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Surface(
-                        modifier = Modifier.size(36.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(step.icon, contentDescription = null, modifier = Modifier.size(20.dp))
-                        }
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(step.title), style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            stringResource(step.detail),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InstallStatusCard(installState: InstallUiState, onInstall: () -> Unit) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val uriHandler = LocalUriHandler.current
-    val managerInstalled = remember(installState) { isKernelSuManagerInstalled(context) }
-    Card(
-        onClick = {
-            clickHaptic(view)
-            when {
-                installState.busy -> Unit
-                installState.phase == InstallPhase.Installed -> {
-                    if (managerInstalled) {
-                        openKernelSuManager(context)
-                    } else {
-                        uriHandler.openUri(KERNEL_SU_MANAGER_URL)
-                    }
-                }
-                else -> onInstall()
-            }
-        },
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
-        shape = expressiveClickableCardShape(interactionSource),
-        interactionSource = interactionSource,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            when {
-                installState.busy -> LoadingIndicator(
-                    modifier = Modifier.size(44.dp),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                installState.phase == InstallPhase.Installed -> Icon(
-                    Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(44.dp),
-                )
-                installState.phase == InstallPhase.Failed -> Icon(
-                    Icons.Rounded.Warning, contentDescription = null, modifier = Modifier.size(44.dp),
-                )
-                else -> Icon(
-                    Icons.Rounded.Warning, contentDescription = null, modifier = Modifier.size(44.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                if (installState.phase == InstallPhase.Installed) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_kernelsu),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                        Text(
-                            text = stringResource(R.string.status_ksu_active),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                } else {
-                    Text(
-                        text = when (installState.phase) {
-                            InstallPhase.Ready -> stringResource(R.string.status_not_installed)
-                            else -> installState.message
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-                Text(
-                    text = when (installState.phase) {
-                        InstallPhase.Installed -> stringResource(
-                            if (managerInstalled) {
-                                R.string.install_tap_open_manager
-                            } else {
-                                R.string.install_tap_manager
-                            },
-                        )
-                        InstallPhase.Failed -> stringResource(R.string.install_tap_retry)
-                        else -> stringResource(R.string.install_tap_start)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f),
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocalPayloadCard(onClick: () -> Unit) {
-    val view = LocalView.current
-    val interactionSource = remember { MutableInteractionSource() }
-    Card(
-        onClick = {
-            clickHaptic(view)
-            onClick()
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = expressiveClickableCardShape(interactionSource),
-        interactionSource = interactionSource,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Icon(
-                Icons.Rounded.Code,
-                contentDescription = null,
-                modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.local_payload_card_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(R.string.local_payload_card_description),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.86f),
-                )
-            }
-            Icon(
-                Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
+        item {
+            StepsCard()
         }
     }
 }
 
 @Composable
 private fun DeviceCard(device: DeviceSnapshot) {
-    val view = LocalView.current
-    var kernelExpanded by remember { mutableStateOf(false) }
     Card(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
-        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            InfoRow(Icons.Rounded.Memory, stringResource(R.string.device), "${device.manufacturer} ${device.model} (${device.device})")
-            InfoRow(Icons.Rounded.Code, stringResource(R.string.firmware), device.buildId)
-            InfoRow(Icons.Rounded.Info, stringResource(R.string.system), "Android ${device.androidRelease} (API ${device.sdk})")
-            InfoRow(
-                icon = Icons.Rounded.Info,
-                label = stringResource(R.string.kernel),
-                value = if (kernelExpanded) device.kernelVersionFull else device.kernelRelease,
-                onClick = {
-                    clickHaptic(view)
-                    kernelExpanded = !kernelExpanded
-                },
-            )
-            InfoRow(Icons.Rounded.Security, stringResource(R.string.system_abi), "${device.abi} (${device.pageSize / 1024}K)")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.Memory,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    stringResource(R.string.card_device_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            DeviceInfoRow(stringResource(R.string.device_model), device.model)
+            DeviceInfoRow(stringResource(R.string.device_kernel), device.kernelVersion)
+            DeviceInfoRow(stringResource(R.string.device_android), device.androidVersion)
+            DeviceInfoRow(stringResource(R.string.device_security_patch), device.securityPatch)
         }
     }
 }
 
 @Composable
-private fun InfoRow(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    onClick: (() -> Unit)? = null,
-) {
+private fun DeviceInfoRow(label: String, value: String) {
     Row(
-        modifier = if (onClick != null) {
-            Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.medium)
-                .clickable(onClick = onClick)
-        } else {
-            Modifier
-        },
-        horizontalArrangement = Arrangement.spacedBy(13.dp),
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Column {
-            Text(label, style = MaterialTheme.typography.titleSmall)
-            Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun RootStatusCard(uiState: InstallUiState) {
+    val isRooted = uiState.isRooted
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isRooted) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            },
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                if (isRooted) Icons.Rounded.VerifiedUser else Icons.Rounded.Security,
+                contentDescription = null,
+                tint = if (isRooted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp),
+            )
+            Column {
+                Text(
+                    stringResource(if (isRooted) R.string.root_status_rooted else R.string.root_status_not_rooted),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                if (isRooted && uiState.kernelSuVersion != null) {
+                    Text(
+                        stringResource(R.string.root_ksu_version, uiState.kernelSuVersion),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun PayloadCard(
+    uiState: InstallUiState,
+    rebootUserspace: Boolean,
+    onRebootUserspaceChanged: (Boolean) -> Unit,
+    onSelectPayload: () -> Unit,
+    onStartRoot: () -> Unit,
+    onStopSession: () -> Unit,
+) {
+    val selectedProfile = uiState.selectedProfile
+    val isRunning = uiState.phase != null && uiState.phase != InstallPhase.Done
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .animateContentSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    stringResource(R.string.card_payload_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (selectedProfile != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        selectedProfile.displayName,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        selectedProfile.supportedModels,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // Reboot userspace toggle — only visible when a payload is selected
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = rebootUserspace,
+                            role = Role.Switch,
+                            onValueChange = onRebootUserspaceChanged,
+                        )
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.option_reboot_userspace),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            stringResource(R.string.option_reboot_userspace_detail),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = rebootUserspace,
+                        onCheckedChange = null,
+                    )
+                }
+            }
+
+            if (uiState.phase != null) {
+                InstallProgressSection(uiState)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilledTonalButton(
+                    onClick = onSelectPayload,
+                    enabled = !isRunning,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(
+                        if (selectedProfile == null) R.string.action_select_payload
+                        else R.string.action_change_payload
+                    ))
+                }
+                if (selectedProfile != null) {
+                    Button(
+                        onClick = if (isRunning) onStopSession else onStartRoot,
+                        modifier = Modifier.weight(1f),
+                        colors = if (isRunning) {
+                            androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                            )
+                        } else {
+                            androidx.compose.material3.ButtonDefaults.buttonColors()
+                        },
+                    ) {
+                        Text(stringResource(
+                            if (isRunning) R.string.action_stop
+                            else R.string.action_root
+                        ))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InstallProgressSection(uiState: InstallUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (uiState.progress != null) {
+            LinearProgressIndicator(
+                progress = { uiState.progress },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        Text(
+            uiState.statusMessage ?: stringResource(R.string.install_running),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -1168,7 +569,7 @@ val installerSteps = listOf(
 @Composable
 private fun TargetSelectionSheet(
     device: DeviceSnapshot,
-    catalog: TargetCatalog,
+    catalog: TargetCatalogUiState,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
     onNext: (TargetProfile) -> Unit,
@@ -1189,16 +590,14 @@ private fun TargetSelectionSheet(
                 stringResource(R.string.select_target_title),
                 style = MaterialTheme.typography.titleLarge,
             )
-            when (catalog.state) {
-                TargetCatalogState.Loading -> {
+            if (catalog.loading) {
                     Box(
                         modifier = Modifier.fillMaxWidth().height(80.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator()
                     }
-                }
-                TargetCatalogState.Error -> {
+                } else if (catalog.error != null) {
                     Text(
                         stringResource(R.string.target_load_error),
                         color = MaterialTheme.colorScheme.error,
@@ -1209,8 +608,7 @@ private fun TargetSelectionSheet(
                     }) {
                         Text(stringResource(R.string.action_retry))
                     }
-                }
-                TargetCatalogState.Loaded -> {
+                } else {
                     if (catalog.profiles.isEmpty()) {
                         Text(stringResource(R.string.target_none_available))
                     } else {
@@ -1252,174 +650,85 @@ private fun TargetSelectionSheet(
                         }
                     }
                 }
-            }
         }
     }
 }
 
 @Composable
-private fun LocalPayloadPicker(
-    profileId: String,
-    globalRebootUserspace: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (exploitUri: Uri, kernelSuUri: Uri?, rebootUserspace: Boolean) -> Unit,
-) {
-    val view = LocalView.current
-    var exploitUri by remember { mutableStateOf<Uri?>(null) }
-    var kernelSuUri by remember { mutableStateOf<Uri?>(null) }
-    var rebootUserspace by remember { mutableStateOf(globalRebootUserspace) }
-    val exploitLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) exploitUri = uri
-    }
-    val kernelSuLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        kernelSuUri = uri
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Rounded.Code, contentDescription = null) },
-        title = {
-            DialogDimAmount(0.34f)
-            Text(stringResource(R.string.local_payload_title))
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Exploit picker
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        stringResource(R.string.local_payload_exploit_label),
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = exploitUri?.lastPathSegment ?: stringResource(R.string.local_payload_none),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        FilledTonalButton(
-                            onClick = {
-                                clickHaptic(view)
-                                exploitLauncher.launch(arrayOf("*/*"))
-                            },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        ) {
-                            Text(stringResource(R.string.action_browse), style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                }
-                // KernelSU picker
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        stringResource(R.string.local_payload_kernelsu_label),
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = kernelSuUri?.lastPathSegment ?: stringResource(R.string.local_payload_optional),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        FilledTonalButton(
-                            onClick = {
-                                clickHaptic(view)
-                                kernelSuLauncher.launch(arrayOf("*/*"))
-                            },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        ) {
-                            Text(stringResource(R.string.action_browse), style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                }
-                HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
-                // Per-attempt reboot userspace toggle
+private fun StepsCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    stringResource(R.string.card_steps_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            installerSteps.forEachIndexed { index, step ->
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .toggleable(
-                            value = rebootUserspace,
-                            role = Role.Switch,
-                            onValueChange = {
-                                clickHaptic(view)
-                                rebootUserspace = it
-                            },
-                        )
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
                     Icon(
-                        Icons.Rounded.RestartAlt,
+                        step.icon,
                         contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
                     )
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column {
                         Text(
-                            stringResource(R.string.reboot_userspace_this_attempt),
-                            style = MaterialTheme.typography.titleSmall,
+                            stringResource(step.title),
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            stringResource(R.string.reboot_userspace_this_attempt_description),
+                            stringResource(step.detail),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(
-                        checked = rebootUserspace,
-                        onCheckedChange = null,
-                    )
+                }
+                if (index < installerSteps.lastIndex) {
+                    HorizontalDivider(modifier = Modifier.padding(start = 32.dp))
                 }
             }
-        },
-        confirmButton = {
-            FilledTonalButton(
-                onClick = {
-                    clickHaptic(view)
-                    val exploit = exploitUri ?: return@FilledTonalButton
-                    onConfirm(exploit, kernelSuUri, rebootUserspace)
-                },
-                enabled = exploitUri != null,
-            ) {
-                Text(stringResource(R.string.action_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                clickHaptic(view)
-                onDismiss()
-            }) {
-                Text(stringResource(R.string.action_cancel))
-            }
-        },
-    )
+        }
+    }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// History Screen
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun HistoryPage(
-    padding: PaddingValues,
-    history: List<InstallHistoryEntry>,
-    onDeleteEntries: (Set<String>) -> Unit,
+private fun HistoryScreen(
+    entries: List<InstallHistoryEntry>,
+    onDelete: (String) -> Unit,
+    onDeleteAll: () -> Unit,
 ) {
+    var selectionMode by rememberSaveable { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var showDeleteAllDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeleteSelectedDialog by rememberSaveable { mutableStateOf(false) }
     val view = LocalView.current
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
 
     BackHandler(enabled = selectionMode) {
         selectionMode = false
@@ -1434,490 +743,492 @@ private fun HistoryPage(
                 exit = scaleOut() + fadeOut(),
             ) {
                 ExtendedFloatingActionButton(
-                    onClick = {
-                        clickHaptic(view)
-                        onDeleteEntries(selectedIds)
-                        selectedIds = emptySet()
-                        selectionMode = false
-                    },
+                    text = { Text(stringResource(R.string.action_delete_selected, selectedIds.size)) },
                     icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
-                    text = { Text(pluralStringResource(R.plurals.history_delete_n, selectedIds.size, selectedIds.size)) },
+                    onClick = { showDeleteSelectedDialog = true },
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     contentColor = MaterialTheme.colorScheme.onErrorContainer,
                 )
             }
         },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 54.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+        if (entries.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        stringResource(R.string.nav_history),
-                        style = MaterialTheme.typography.headlineLarge,
-                        modifier = Modifier.weight(1f),
+                    Icon(
+                        Icons.Rounded.History,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    AnimatedVisibility(visible = history.isNotEmpty()) {
-                        IconButton(onClick = {
-                            clickHaptic(view)
-                            if (selectionMode) {
-                                if (selectedIds.size == history.size) {
-                                    selectedIds = emptySet()
-                                } else {
-                                    selectedIds = history.map { it.id }.toSet()
-                                }
-                            } else {
-                                selectionMode = true
-                                selectedIds = history.map { it.id }.toSet()
-                            }
-                        }) {
-                            Crossfade(
-                                targetState = selectionMode && selectedIds.size == history.size,
-                                label = "select_all_icon",
-                            ) { allSelected ->
-                                if (allSelected) {
-                                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_deselect_all))
-                                } else {
-                                    Icon(Icons.Rounded.SelectAll, contentDescription = stringResource(R.string.action_select_all))
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        stringResource(R.string.history_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-            if (history.isEmpty()) {
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 item {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(top = 48.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            stringResource(R.string.history_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            itemsIndexed(history, key = { _, entry -> entry.id }) { index, entry ->
-                val isSelected = entry.id in selectedIds
-                val cardElevation by animateDpAsState(
-                    targetValue = if (isSelected) 4.dp else 0.dp,
-                    label = "card_elevation_$index",
-                )
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = {
-                                clickHaptic(view)
-                                if (selectionMode) {
-                                    selectedIds = if (isSelected) selectedIds - entry.id else selectedIds + entry.id
-                                    if (selectedIds.isEmpty()) selectionMode = false
-                                }
-                            },
-                            onLongClick = {
-                                clickHaptic(view)
-                                selectionMode = true
-                                selectedIds = selectedIds + entry.id
-                            },
-                        ),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHighest
-                        },
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = cardElevation),
-                ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Icon(
-                            if (entry.success) Icons.Rounded.CheckCircle else Icons.Rounded.Error,
-                            contentDescription = null,
-                            tint = if (entry.success) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.error
-                            },
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
+                        if (selectionMode) {
+                            TextButton(onClick = {
+                                selectedIds = entries.map { it.id }.toSet()
+                            }) {
+                                Icon(Icons.Rounded.SelectAll, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.action_select_all))
+                            }
+                            TextButton(onClick = {
+                                selectionMode = false
+                                selectedIds = emptySet()
+                            }) {
+                                Icon(Icons.Rounded.Close, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.action_cancel))
+                            }
+                        } else {
                             Text(
-                                entry.profileId ?: stringResource(R.string.history_local_payload),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Text(
-                                formatHistoryDate(entry.timestamp),
-                                style = MaterialTheme.typography.bodySmall,
+                                stringResource(R.string.history_count, entries.size),
+                                style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            TextButton(onClick = { showDeleteAllDialog = true }) {
+                                Icon(Icons.Rounded.Delete, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text(stringResource(R.string.action_clear_all))
+                            }
                         }
-                        AnimatedVisibility(visible = selectionMode) {
-                            Checkbox(
-                                checked = isSelected,
-                                onCheckedChange = null,
+                    }
+                }
+                itemsIndexed(entries, key = { _, entry -> entry.id }) { _, entry ->
+                    val isSelected = entry.id in selectedIds
+                    val cardElevation by animateDpAsState(
+                        if (isSelected) 4.dp else 0.dp,
+                        label = "cardElevation",
+                    )
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = {
+                                    if (selectionMode) {
+                                        selectedIds = if (isSelected) {
+                                            selectedIds - entry.id
+                                        } else {
+                                            selectedIds + entry.id
+                                        }
+                                        if (selectedIds.isEmpty()) selectionMode = false
+                                    }
+                                },
+                                onLongClick = {
+                                    clickHaptic(view)
+                                    selectionMode = true
+                                    selectedIds = selectedIds + entry.id
+                                },
+                            ),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = cardElevation),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                if (entry.result == InstallRunResult.Succeeded) Icons.Rounded.CheckCircle else Icons.Rounded.Error,
+                                contentDescription = null,
+                                tint = if (entry.result == InstallRunResult.Succeeded) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
+                                modifier = Modifier.size(22.dp),
                             )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    entry.profileId ?: stringResource(R.string.history_local_payload),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Text(
+                                    formatHistoryDate(entry.startedAtMillis),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            AnimatedVisibility(visible = selectionMode) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = null,
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllDialog = false },
+            title = { Text(stringResource(R.string.dialog_clear_history_title)) },
+            text = { Text(stringResource(R.string.dialog_clear_history_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteAll()
+                    showDeleteAllDialog = false
+                }) { Text(stringResource(R.string.action_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    if (showDeleteSelectedDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSelectedDialog = false },
+            title = { Text(stringResource(R.string.dialog_delete_selected_title)) },
+            text = { Text(stringResource(R.string.dialog_delete_selected_body, selectedIds.size)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedIds.forEach(onDelete)
+                    selectedIds = emptySet()
+                    selectionMode = false
+                    showDeleteSelectedDialog = false
+                }) { Text(stringResource(R.string.action_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteSelectedDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 }
 
+private fun formatHistoryDate(millis: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+        .format(Date(millis))
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings Screen
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun SettingsPage(
-    padding: PaddingValues,
-    accentColor: AccentColor,
-    themeMode: AppThemeMode,
-    advancedMode: Boolean,
-    shizukuMode: Boolean,
-    localPayloadMode: Boolean,
-    rebootAfterInstall: Boolean,
-    updateStatus: UpdateStatus,
-    onCheckForUpdate: () -> Unit,
-    onStartDownload: (UpdateInfo) -> Unit,
-    onAccentColorChanged: (AccentColor) -> Unit,
-    onThemeModeChanged: (AppThemeMode) -> Unit,
-    onAdvancedModeChanged: (Boolean) -> Unit,
-    onShizukuModeChanged: (Boolean) -> Unit,
-    onLocalPayloadModeChanged: (Boolean) -> Unit,
-    onRebootAfterInstallChanged: (Boolean) -> Unit,
-) {
+private fun SettingsScreen(installViewModel: InstallViewModel) {
     val context = LocalContext.current
-    val view = LocalView.current
-    val uriHandler = LocalUriHandler.current
-    var showColorPicker by remember { mutableStateOf(false) }
-    var showLanguagePicker by remember { mutableStateOf(false) }
+    val accentColor by installViewModel.accentColor.collectAsStateWithLifecycle()
+    val themeMode by installViewModel.themeMode.collectAsStateWithLifecycle()
+    val advancedMode by installViewModel.advancedMode.collectAsStateWithLifecycle()
+    val shizukuMode by installViewModel.shizukuMode.collectAsStateWithLifecycle()
+    val autoReroot by installViewModel.autoReroot.collectAsStateWithLifecycle()
+    val localPayloadMode by installViewModel.localPayloadMode.collectAsStateWithLifecycle()
+
+    var showAccentPicker by rememberSaveable { mutableStateOf(false) }
+    var showThemePicker by rememberSaveable { mutableStateOf(false) }
+    var showLanguagePicker by rememberSaveable { mutableStateOf(false) }
+    var showAbout by rememberSaveable { mutableStateOf(false) }
+
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(padding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
-            Text(
-                stringResource(R.string.nav_settings),
-                style = MaterialTheme.typography.headlineLarge,
-                modifier = Modifier.padding(top = 54.dp, bottom = 6.dp),
+            SettingsSectionHeader(stringResource(R.string.settings_section_appearance))
+        }
+        item {
+            SettingsItem(
+                icon = Icons.Rounded.Palette,
+                title = stringResource(R.string.settings_accent_color),
+                subtitle = accentColorLabel(accentColor),
+                onClick = { showAccentPicker = true },
             )
         }
-        // Appearance section
         item {
-            SettingsSectionCard {
-                SettingsSectionHeader(stringResource(R.string.settings_section_appearance))
-                // Theme mode
-                SettingsNavigateCard(
-                    icon = when (themeMode) {
-                        AppThemeMode.System -> Icons.Rounded.BrightnessAuto
-                        AppThemeMode.Light -> Icons.Rounded.LightMode
-                        AppThemeMode.Dark -> Icons.Rounded.DarkMode
-                    },
-                    title = stringResource(R.string.settings_theme),
-                    value = themeModeLabel(themeMode),
-                    onClick = {
-                        clickHaptic(view)
-                        showColorPicker = true
-                    },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                // Accent color
-                SettingsNavigateCard(
-                    icon = Icons.Rounded.Palette,
-                    title = stringResource(R.string.settings_accent_color),
-                    value = accentColorLabel(accentColor),
-                    onClick = {
-                        clickHaptic(view)
-                        showColorPicker = true
-                    },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                // Language
-                SettingsNavigateCard(
-                    icon = Icons.Rounded.Language,
-                    title = stringResource(R.string.settings_language),
-                    value = currentLanguageLabel(),
-                    onClick = {
-                        clickHaptic(view)
-                        showLanguagePicker = true
-                    },
-                )
-            }
+            SettingsItem(
+                icon = Icons.Rounded.BrightnessAuto,
+                title = stringResource(R.string.settings_theme_mode),
+                subtitle = themeModeLabel(themeMode),
+                onClick = { showThemePicker = true },
+            )
         }
-        // Advanced section
         item {
-            SettingsSectionCard {
-                SettingsSectionHeader(stringResource(R.string.settings_section_advanced))
-                SettingsSwitchCard(
-                    icon = Icons.Rounded.Settings,
-                    title = stringResource(R.string.settings_advanced_mode),
-                    description = stringResource(R.string.settings_advanced_mode_description),
-                    checked = advancedMode,
-                    onCheckedChange = {
-                        clickHaptic(view)
-                        onAdvancedModeChanged(it)
-                    },
-                    enabled = !localPayloadMode,
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                SettingsSwitchCard(
-                    icon = Icons.Rounded.Save,
-                    title = stringResource(R.string.settings_shizuku_mode),
-                    description = stringResource(R.string.settings_shizuku_mode_description),
-                    checked = shizukuMode,
-                    onCheckedChange = {
-                        clickHaptic(view)
-                        onShizukuModeChanged(it)
-                    },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                SettingsSwitchCard(
-                    icon = Icons.Rounded.Code,
-                    title = stringResource(R.string.settings_local_payload_mode),
-                    description = stringResource(R.string.settings_local_payload_mode_description),
-                    checked = localPayloadMode,
-                    onCheckedChange = {
-                        clickHaptic(view)
-                        onLocalPayloadModeChanged(it)
-                    },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                SettingsSwitchCard(
-                    icon = Icons.Rounded.RestartAlt,
-                    title = stringResource(R.string.settings_reboot_after_install),
-                    description = stringResource(R.string.settings_reboot_after_install_description),
-                    checked = rebootAfterInstall,
-                    onCheckedChange = {
-                        clickHaptic(view)
-                        onRebootAfterInstallChanged(it)
-                    },
-                )
-            }
+            SettingsItem(
+                icon = Icons.Rounded.Language,
+                title = stringResource(R.string.settings_language),
+                subtitle = currentLanguageLabel(context),
+                onClick = { showLanguagePicker = true },
+            )
         }
-        // About section
+        item { SettingsSectionHeader(stringResource(R.string.settings_section_behavior)) }
         item {
-            SettingsSectionCard {
-                SettingsSectionHeader(stringResource(R.string.settings_section_about))
-                SettingsNavigateCard(
-                    icon = Icons.Rounded.Info,
-                    title = stringResource(R.string.settings_version),
-                    value = "",
-                    valueContent = {
-                        AppVersionText(
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    onClick = {
-                        clickHaptic(view)
-                        onCheckForUpdate()
-                    },
+            SettingsToggleItem(
+                icon = Icons.Rounded.Code,
+                title = stringResource(R.string.settings_advanced_mode),
+                subtitle = stringResource(R.string.settings_advanced_mode_detail),
+                checked = advancedMode,
+                onCheckedChange = { installViewModel.setAdvancedMode(it) },
+            )
+        }
+        item {
+            SettingsToggleItem(
+                icon = Icons.Rounded.Save,
+                title = stringResource(R.string.settings_shizuku),
+                subtitle = stringResource(R.string.settings_shizuku_detail),
+                checked = shizukuMode,
+                onCheckedChange = { installViewModel.setShizukuMode(it) },
+            )
+        }
+        item {
+            SettingsToggleItem(
+                icon = Icons.Rounded.Schedule,
+                title = stringResource(R.string.settings_auto_reroot),
+                subtitle = stringResource(R.string.settings_auto_reroot_detail),
+                checked = autoReroot,
+                onCheckedChange = { installViewModel.setAutoReroot(it) },
+            )
+        }
+        item {
+            SettingsToggleItem(
+                icon = Icons.Rounded.Link,
+                title = stringResource(R.string.settings_local_payload),
+                subtitle = stringResource(R.string.settings_local_payload_detail),
+                checked = localPayloadMode,
+                onCheckedChange = { installViewModel.setLocalPayloadMode(it) },
+            )
+        }
+        item { SettingsSectionHeader(stringResource(R.string.settings_section_about)) }
+        item {
+            SettingsItem(
+                icon = Icons.Rounded.Info,
+                title = stringResource(R.string.settings_about),
+                onClick = { showAbout = true },
+            )
+        }
+    }
+
+    if (showAccentPicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showAccentPicker = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    stringResource(R.string.settings_accent_color),
+                    style = MaterialTheme.typography.titleLarge,
                 )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                when (val status = updateStatus) {
-                    is UpdateStatus.Checking -> {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            Text(stringResource(R.string.updater_checking), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                    is UpdateStatus.UpToDate -> {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Rounded.CheckCircle,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Text(stringResource(R.string.updater_up_to_date), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                    is UpdateStatus.Failed -> {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Rounded.Error,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Text(stringResource(R.string.updater_failed), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                    is UpdateStatus.Available -> {
-                        SettingsNavigateCard(
-                            icon = Icons.Rounded.SystemUpdate,
-                            title = stringResource(R.string.updater_available_title),
-                            value = status.info.versionName,
-                            onClick = {
-                                clickHaptic(view)
-                                onStartDownload(status.info)
-                            },
-                        )
-                    }
-                    is UpdateStatus.Downloading -> {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(stringResource(R.string.updater_downloading), style = MaterialTheme.typography.bodyMedium)
-                            LinearProgressIndicator(
-                                progress = { status.progress },
-                                modifier = Modifier.fillMaxWidth(),
-                                drawStopIndicator = {},
-                            )
-                        }
-                    }
-                    else -> {}
-                }
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                SettingsNavigateCard(
-                    icon = Icons.Rounded.Link,
-                    title = stringResource(R.string.settings_source_code),
-                    value = "",
-                    onClick = {
-                        clickHaptic(view)
-                        uriHandler.openUri("https://github.com/TheFlood424K/Root-My-Galaxy")
-                    },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                SettingsNavigateCard(
-                    icon = Icons.Rounded.Link,
-                    title = "KernelSU",
-                    value = "",
-                    onClick = {
-                        clickHaptic(view)
-                        uriHandler.openUri(KERNEL_SU_HOME_URL)
-                    },
-                )
-                HorizontalDivider(modifier = Modifier.padding(start = 52.dp))
-                SettingsNavigateCard(
-                    icon = Icons.Rounded.Link,
-                    title = "Shizuku",
-                    value = "",
-                    onClick = {
-                        clickHaptic(view)
-                        openShizukuManager(context)
+                AccentColorGrid(
+                    accentColor = accentColor,
+                    onAccentColorChanged = {
+                        installViewModel.setAccentColor(it)
+                        showAccentPicker = false
                     },
                 )
             }
         }
     }
 
-    if (showColorPicker) {
-        ThemePickerSheet(
-            accentColor = accentColor,
-            themeMode = themeMode,
-            onAccentColorChanged = onAccentColorChanged,
-            onThemeModeChanged = onThemeModeChanged,
-            onDismiss = { showColorPicker = false },
-        )
+    if (showThemePicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showThemePicker = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    stringResource(R.string.settings_theme_mode),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Column(modifier = Modifier.selectableGroup()) {
+                    AppThemeMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = themeMode == mode,
+                                    role = Role.RadioButton,
+                                    onClick = {
+                                        installViewModel.setThemeMode(mode)
+                                        showThemePicker = false
+                                    },
+                                )
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            RadioButton(
+                                selected = themeMode == mode,
+                                onClick = null,
+                            )
+                            Text(themeModeLabel(mode))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showLanguagePicker) {
-        LanguagePickerPopup(
+        LanguagePickerSheet(
+            context = context,
             onDismiss = { showLanguagePicker = false },
         )
+    }
+
+    if (showAbout) {
+        AboutSheet(onDismiss = { showAbout = false })
     }
 }
 
 @Composable
-private fun ThemePickerSheet(
-    accentColor: AccentColor,
-    themeMode: AppThemeMode,
-    onAccentColorChanged: (AccentColor) -> Unit,
-    onThemeModeChanged: (AppThemeMode) -> Unit,
-    onDismiss: () -> Unit,
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun SettingsItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit,
 ) {
     val view = LocalView.current
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        onClick = {
+            clickHaptic(view)
+            onClick()
+        },
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Theme mode selector
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.settings_theme), style = MaterialTheme.typography.titleMedium)
-                Row(
-                    modifier = Modifier.fillMaxWidth().selectableGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AppThemeMode.entries.forEach { mode ->
-                        val selected = themeMode == mode
-                        ToggleButton(
-                            checked = selected,
-                            onCheckedChange = {
-                                clickHaptic(view)
-                                onThemeModeChanged(mode)
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ToggleButtonDefaults.toggleButtonColors(
-                                checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            ),
-                        ) {
-                            Icon(
-                                when (mode) {
-                                    AppThemeMode.System -> Icons.Rounded.BrightnessAuto
-                                    AppThemeMode.Light -> Icons.Rounded.LightMode
-                                    AppThemeMode.Dark -> Icons.Rounded.DarkMode
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                themeModeLabel(mode),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                    }
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium)
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-            // Accent color selector
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.settings_accent_color), style = MaterialTheme.typography.titleMedium)
-                AccentColorGrid(
-                    accentColor = accentColor,
-                    onAccentColorChanged = onAccentColorChanged,
-                )
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium)
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+            )
         }
     }
 }
@@ -1958,7 +1269,7 @@ private fun AccentColorGrid(
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = selected,
                                 enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
                                 exit = scaleOut() + fadeOut(),
@@ -1981,79 +1292,46 @@ private fun AccentColorGrid(
 }
 
 @Composable
-private fun LanguagePickerPopup(
+private fun LanguagePickerSheet(
+    context: Context,
     onDismiss: () -> Unit,
 ) {
-    val view = LocalView.current
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    var anchorOffset by remember { mutableStateOf(0f) }
-    val menuWidth = 220.dp
-    val menuWidthPx = with(density) { menuWidth.toPx() }
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    var alignRight by remember { mutableStateOf(true) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.0f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            )
+    val currentTag = remember { currentLanguageTag(context) }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Popup(
-            alignment = if (alignRight) Alignment.TopEnd else Alignment.TopStart,
-            offset = androidx.compose.ui.unit.IntOffset(0, anchorOffset.toInt()),
-            onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            AnimatedVisibility(
-                visible = true,
-                enter = scaleIn(
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
-                    transformOrigin = TransformOrigin(if (alignRight) 1f else 0f, 0f),
-                ) + fadeIn(tween(120)),
-            ) {
-                Surface(
-                    modifier = Modifier.width(menuWidth),
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shadowElevation = 8.dp,
-                ) {
-                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                        languageOptions.forEach { option ->
-                            val current = currentLanguageTag(context)
-                            val selected = option.tag == current
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .selectable(
-                                        selected = selected,
-                                        role = Role.RadioButton,
-                                        onClick = {
-                                            clickHaptic(view)
-                                            setAppLanguage(context, option.tag)
-                                            onDismiss()
-                                        },
-                                    )
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                RadioButton(
-                                    selected = selected,
-                                    onClick = null,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Text(
-                                    stringResource(option.label),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            }
-                        }
+            Text(
+                stringResource(R.string.settings_language),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Column(modifier = Modifier.selectableGroup()) {
+                languageOptions.forEach { option ->
+                    val isSelected = currentTag == option.tag
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = isSelected,
+                                role = Role.RadioButton,
+                                onClick = {
+                                    setAppLanguage(context, option.tag)
+                                    onDismiss()
+                                },
+                            )
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        RadioButton(selected = isSelected, onClick = null)
+                        Text(stringResource(option.label))
                     }
                 }
             }
@@ -2061,170 +1339,104 @@ private fun LanguagePickerPopup(
     }
 }
 
-@Composable
-private fun SettingsSectionCard(
-    content: @Composable () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ),
-    ) {
-        Column { content() }
-    }
-}
+data class LanguageOption(@StringRes val label: Int, val tag: String)
+
+val languageOptions = listOf(
+    LanguageOption(R.string.language_system, ""),
+    LanguageOption(R.string.language_english, "en"),
+    LanguageOption(R.string.language_korean, "ko"),
+    LanguageOption(R.string.language_spanish, "es"),
+    LanguageOption(R.string.language_french, "fr"),
+    LanguageOption(R.string.language_german, "de"),
+    LanguageOption(R.string.language_japanese, "ja"),
+    LanguageOption(R.string.language_chinese_simplified, "zh-Hans"),
+)
 
 @Composable
-private fun SettingsSectionHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp),
-    )
-}
-
-@Composable
-private fun SettingsSwitchCard(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(
-                value = checked,
-                role = Role.Switch,
-                enabled = enabled,
-                onValueChange = onCheckedChange,
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-            modifier = Modifier.size(24.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-            )
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = null,
-            enabled = enabled,
-        )
-    }
-}
-
-@Composable
-private fun SettingsNavigateCard(
-    icon: ImageVector,
-    title: String,
-    value: String,
-    valueContent: (@Composable () -> Unit)? = null,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp),
-        )
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.weight(1f),
-        )
-        if (valueContent != null) {
-            valueContent()
-        } else {
-            Text(
-                value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Icon(
-            Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp),
-        )
-    }
-}
-
-@Composable
-private fun expressiveClickableCardShape(interactionSource: MutableInteractionSource): RoundedCornerShape {
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val cornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 24.dp else 16.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessHigh,
-        ),
-        label = "card_corner_radius",
-    )
-    return RoundedCornerShape(cornerRadius)
-}
-
-private fun formatHistoryDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
-
-@Composable
-private fun currentLanguageLabel(): String {
+private fun AboutSheet(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val tag = currentLanguageTag(context)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.settings_about),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                stringResource(R.string.about_body),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/TheFlood424K/Root-My-Galaxy"))
+                    context.startActivity(intent)
+                },
+            ) {
+                Icon(Icons.Rounded.Link, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.about_github))
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+private fun clickHaptic(view: View) {
+    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+}
+
+@Composable
+private fun currentLanguageLabel(context: Context): String {
+    val tag = remember { currentLanguageTag(context) }
     return languageOptions.firstOrNull { it.tag == tag }?.let { stringResource(it.label) }
         ?: stringResource(R.string.language_system)
 }
 
 private fun currentLanguageTag(context: Context): String {
-    return androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
-        .toLanguageTags()
-        .takeIf { it.isNotBlank() && it != "und" } ?: ""
+    return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        val lm = context.getSystemService(android.app.LocaleManager::class.java)
+        lm?.applicationLocales?.toLanguageTags()
+            ?.takeIf { it.isNotBlank() && it != "und" } ?: ""
+    } else {
+        java.util.Locale.getDefault().toLanguageTag()
+            .takeIf { it.isNotBlank() && it != "und" } ?: ""
+    }
 }
 
 private fun setAppLanguage(context: Context, tag: String) {
-    val localeList = if (tag.isBlank()) {
-        androidx.core.os.LocaleListCompat.getEmptyLocaleList()
-    } else {
-        androidx.core.os.LocaleListCompat.forLanguageTags(tag)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        val lm = context.getSystemService(android.app.LocaleManager::class.java)
+        lm?.applicationLocales = if (tag.isBlank()) {
+            android.os.LocaleList.getEmptyLocaleList()
+        } else {
+            android.os.LocaleList.forLanguageTags(tag)
+        }
     }
-    androidx.appcompat.app.AppCompatDelegate.setApplicationLocales(localeList)
+}
+
+@Composable
+private fun themeModeLabel(themeMode: AppThemeMode): String = when (themeMode) {
+    AppThemeMode.System -> stringResource(R.string.theme_system)
+    AppThemeMode.Light -> stringResource(R.string.theme_light)
+    AppThemeMode.Dark -> stringResource(R.string.theme_dark)
 }
 
 @Composable
 private fun accentColorLabel(accentColor: AccentColor): String = when (accentColor) {
     AccentColor.Dynamic -> stringResource(R.string.accent_dynamic)
     AccentColor.Blue -> stringResource(R.string.accent_blue)
+    AccentColor.Violet -> stringResource(R.string.accent_violet)
     AccentColor.Green -> stringResource(R.string.accent_green)
     AccentColor.Purple -> stringResource(R.string.accent_purple)
     AccentColor.Red -> stringResource(R.string.accent_red)
@@ -2239,6 +1451,7 @@ private fun accentColorLabel(accentColor: AccentColor): String = when (accentCol
 private fun accentColorSwatch(accentColor: AccentColor): Color = when (accentColor) {
     AccentColor.Dynamic -> MaterialTheme.colorScheme.primary
     AccentColor.Blue -> Color(0xFF1976D2)
+    AccentColor.Violet -> Color(0xFF6200EE)
     AccentColor.Green -> Color(0xFF388E3C)
     AccentColor.Purple -> Color(0xFF7B1FA2)
     AccentColor.Red -> Color(0xFFD32F2F)
@@ -2247,11 +1460,4 @@ private fun accentColorSwatch(accentColor: AccentColor): Color = when (accentCol
     AccentColor.Teal -> Color(0xFF00796B)
     AccentColor.Yellow -> Color(0xFFF9A825)
     AccentColor.Monochrome -> Color(0xFF616161)
-}
-
-@Composable
-private fun themeModeLabel(themeMode: AppThemeMode): String = when (themeMode) {
-    AppThemeMode.System -> stringResource(R.string.theme_system)
-    AppThemeMode.Light -> stringResource(R.string.theme_light)
-    AppThemeMode.Dark -> stringResource(R.string.theme_dark)
 }
