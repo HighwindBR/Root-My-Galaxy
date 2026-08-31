@@ -301,7 +301,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                             bootToken,
                             payload.absolutePath,
                             helper.absolutePath,
-                        ).toMap(),
+                        ).associate { entry ->
+                            val eq = entry.indexOf('=')
+                            if (eq >= 0) entry.substring(0, eq) to entry.substring(eq + 1)
+                            else entry to ""
+                        },
                     )
                 }
                 .start()
