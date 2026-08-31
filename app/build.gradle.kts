@@ -17,6 +17,9 @@ android {
 
         ndk {
             abiFilters += "arm64-v8a"
+            // Pin to the NDK version pre-installed on ubuntu-latest so AGP
+            // never tries to download a different version on CI.
+            version = "29.0.14206865"
         }
 
         externalNativeBuild {

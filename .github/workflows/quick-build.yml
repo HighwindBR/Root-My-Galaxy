@@ -25,8 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # setup-java's built-in Gradle cache is a plain ~/.gradle/caches tar —
-      # no action overhead, no init-script injection, no toolchain download.
+      # setup-java's built-in Gradle cache is a plain ~/.gradle/caches tar.
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -34,46 +33,22 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      # Restore the NDK directly from cache. On a hit the entire nttld
-      # JS action is bypassed — saves ~10s of Node bootstrap per run.
-      - name: Restore NDK from cache
-        id: ndk-cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.tool_cache }}/ndk
-          key: ndk-r28b-${{ runner.os }}-v1
-          save-always: false
-
-      # Cache miss path: copy from the runner's pre-installed NDK bundle
-      # instead of downloading. ubuntu-latest ships NDK 27+ under
-      # $ANDROID_SDK_ROOT/ndk/. Use the newest available; fall back to
-      # sdkmanager only if nothing is present at all.
-      - name: Provision NDK (cache miss only)
-        if: steps.ndk-cache.outputs.cache-hit != 'true'
-        run: |
-          NDK_TARGET="${{ runner.tool_cache }}/ndk"
-          mkdir -p "$NDK_TARGET"
-
-          # Try pre-installed NDK versions (newest first)
-          INSTALLED=$(ls -r "${ANDROID_SDK_ROOT}/ndk/" 2>/dev/null | head -1)
-          if [[ -n "$INSTALLED" ]]; then
-            echo "Using pre-installed NDK: ${INSTALLED}"
-            cp -al "${ANDROID_SDK_ROOT}/ndk/${INSTALLED}" "${NDK_TARGET}/r28"
-          else
-            echo "No pre-installed NDK found, installing via sdkmanager…"
-            yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" \
-              "ndk;28.0.13004108" 2>/dev/null
-            cp -al "${ANDROID_SDK_ROOT}/ndk/28.0.13004108" "${NDK_TARGET}/r28"
-          fi
-
+      # ubuntu-latest pre-installs NDK 29 under $ANDROID_SDK_ROOT/ndk/.
+      # Point AGP straight at it: no download, no copy, no action overhead.
       - name: Export NDK env vars
         run: |
-          NDK_PATH="${{ runner.tool_cache }}/ndk/r28"
+          NDK_PATH=$(ls -d "${ANDROID_SDK_ROOT}/ndk/"*/ 2>/dev/null | sort -V | tail -1)
+          NDK_PATH="${NDK_PATH%/}"  # strip trailing slash
+          if [[ -z "$NDK_PATH" || ! -d "$NDK_PATH" ]]; then
+            echo "ERROR: No pre-installed NDK found under ${ANDROID_SDK_ROOT}/ndk/" >&2
+            exit 1
+          fi
+          echo "Using pre-installed NDK: $NDK_PATH"
           echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=${NDK_PATH}" >> $GITHUB_ENV
 
       # ubuntu-latest ships API 35 + build-tools 35.0.0 + cmake 3.22.1.
-      # compileSdk=37 needs android-37; check and install only what's missing.
+      # compileSdk=37 needs android-37; only download what is genuinely missing.
       - name: Install missing SDK components
         run: |
           SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
@@ -100,8 +75,7 @@ jobs:
 
       - name: Build release APK
         env:
-          # Serial GC is faster than G1/ZGC for short-lived --no-daemon
-          # processes: no GC thread startup, no region sizing overhead.
+          # Serial GC beats G1/ZGC for short-lived --no-daemon processes.
           JAVA_TOOL_OPTIONS: "-XX:+UseSerialGC"
         run: |
           ./gradlew assembleRelease \
