@@ -84,8 +84,9 @@ jobs:
             --no-daemon \
             --console=plain
 
+      # v6 is the first release that sets 'runs.using: node24'.
       - name: Upload release APK
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: app-quick-release-${{ github.run_number }}
           path: app/build/outputs/apk/release/*.apk
