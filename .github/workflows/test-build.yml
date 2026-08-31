@@ -18,7 +18,7 @@ jobs:
   test-build:
     name: Test Build (compile check)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 14
 
     steps:
       - name: Checkout
@@ -31,29 +31,32 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          accept-android-sdk-licenses: true
-          packages: >
-            platform-tools
-            platforms;android-37.1
-            build-tools;37.0.0
-            cmake;3.22.1
+      # ubuntu-latest already ships platform-tools and a base SDK;
+      # only install the components that are actually missing.
+      - name: Install missing SDK components
+        run: |
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-37" \
+            "build-tools;35.0.0" \
+            "cmake;3.22.1" 2>/dev/null || true
 
       - name: Cache NDK r28
+        id: cache-ndk
         uses: actions/cache@v4
         with:
           path: ${{ runner.tool_cache }}/ndk/r28
-          key: ndk-r28
+          key: ndk-r28-${{ runner.os }}
 
       - name: Set up NDK r28
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
+          local_cache: true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-overwrite-existing: false
 
       # compileDebugSources checks all Kotlin/Java + native compile steps
       # without running packaging, signing, or dex merging — fastest possible
@@ -61,4 +64,11 @@ jobs:
       - name: Compile sources (no APK)
         env:
           GRADLE_OPTS: "-Xmx5g -XX:+HeapDumpOnOutOfMemoryError"
-        run: ./gradlew compileDebugSources --build-cache --parallel --console=plain
+        run: |
+          ./gradlew compileDebugSources \
+            --build-cache \
+            --parallel \
+            --configuration-cache \
+            --no-daemon \
+            -Dkotlin.incremental=false \
+            --console=plain
