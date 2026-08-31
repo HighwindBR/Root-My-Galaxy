@@ -84,10 +84,8 @@ class InstallActivity : ComponentActivity() {
             1 -> true
             else -> null
         }
-        val startInstall = savedInstanceState == null && AppPreferences.consumeInstallRequest(
-            this,
-            intent.getStringExtra(EXTRA_INSTALL_REQUEST_ID),
-        )
+        val startInstall = savedInstanceState == null &&
+            AppPreferences.consumePendingInstallRequest(this)
         intent.removeExtra(EXTRA_INSTALL_REQUEST_ID)
         setContent {
             RootMyGalaxyTheme(
