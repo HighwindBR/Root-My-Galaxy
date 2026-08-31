@@ -19,6 +19,10 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
+// ---------------------------------------------------------------------------
+// Phase enum
+// ---------------------------------------------------------------------------
+
 enum class InstallPhase {
     Checking,
     Ready,
@@ -26,16 +30,37 @@ enum class InstallPhase {
     Exploiting,
     LoadingKernelSu,
     Installed,
+    Done,
     Failed,
 }
 
 private enum class PayloadSource { Remote, Local }
 
+// ---------------------------------------------------------------------------
+// UI state – now contains all fields expected by MainActivity
+// ---------------------------------------------------------------------------
+
 data class InstallUiState(
     val phase: InstallPhase = InstallPhase.Checking,
-    val message: String = "",
+    /** Short one-line status shown in the status card. */
+    val statusMessage: String = "",
+    /** Float in 0f..1f while a determinate step is running, null otherwise. */
+    val progress: Float? = null,
     val probeOutput: String = "",
     val log: String = "",
+    /** Device snapshot captured at start-up / on refresh. */
+    val device: DeviceSnapshot? = null,
+    val isRooted: Boolean = false,
+    val kernelSuVersion: String? = null,
+    val androidVersion: String? = null,
+    val securityPatch: String? = null,
+    /** The profile the user explicitly selected in the target sheet; null = auto. */
+    val selectedProfile: TargetProfile? = null,
+    /**
+     * Non-null while a deep-link / notification intent carrying a profile ID
+     * is waiting to be confirmed before the install starts.
+     */
+    val pendingInstallRequest: String? = null,
 ) {
     val busy: Boolean
         get() = phase in setOf(
@@ -45,6 +70,8 @@ data class InstallUiState(
             InstallPhase.LoadingKernelSu,
         )
 
+    // Legacy alias – used in some internal call-sites
+    val message: String get() = statusMessage
 }
 
 data class TargetCatalogUiState(
@@ -79,13 +106,31 @@ private fun sha256OrNull(file: File): String? = runCatching {
     }
 }.getOrNull()
 
+// ---------------------------------------------------------------------------
+// ViewModel
+// ---------------------------------------------------------------------------
+
 class InstallViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val repository = PayloadRepository(application)
     private val historyStore = InstallHistoryStore(application)
-    private val mutableState = MutableStateFlow(InstallUiState())
+
+    // -----------------------------------------------------------------------
+    // Internal mutable state
+    // -----------------------------------------------------------------------
+
+    private val mutableUiState = MutableStateFlow(InstallUiState())
     private val mutableHistory = MutableStateFlow(historyStore.closeInterruptedRuns())
     private val mutableTargetCatalog = MutableStateFlow(TargetCatalogUiState())
+
+    // Settings-derived StateFlows written by the set* helpers below
+    private val mutableAccentColor = MutableStateFlow(AppPreferences.accentColor(app))
+    private val mutableThemeMode = MutableStateFlow(AppPreferences.themeMode(app))
+    private val mutableAdvancedMode = MutableStateFlow(AppPreferences.advancedMode(app))
+    private val mutableShizukuMode = MutableStateFlow(AppPreferences.shizukuMode(app))
+    private val mutableAutoReroot = MutableStateFlow(AppPreferences.autoReroot(app))
+    private val mutableLocalPayloadMode = MutableStateFlow(AppPreferences.localPayloadMode(app))
+
     private var discoveryJob: Job? = null
     private var installJob: Job? = null
     private var activeHistoryEntry: InstallHistoryEntry? = null
@@ -98,9 +143,144 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     @Volatile
     private var activeRunRebootUserspace: Boolean? = null
 
-    val state: StateFlow<InstallUiState> = mutableState.asStateFlow()
-    val history: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
+    // -----------------------------------------------------------------------
+    // Public StateFlow API expected by MainActivity
+    // -----------------------------------------------------------------------
+
+    /** Full install UI state (phase, status, progress, device info, …). */
+    val uiState: StateFlow<InstallUiState> = mutableUiState.asStateFlow()
+
+    /** Flat history list. */
+    val installHistory: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
+
+    /** Currently selected accent-color token. */
+    val accentColor: StateFlow<String> = mutableAccentColor.asStateFlow()
+
+    /** Currently selected theme mode ("system" / "light" / "dark"). */
+    val themeMode: StateFlow<String> = mutableThemeMode.asStateFlow()
+
+    /** Whether advanced (manual payload selection) mode is on. */
+    val advancedMode: StateFlow<Boolean> = mutableAdvancedMode.asStateFlow()
+
+    /** Whether Shizuku execution is enabled. */
+    val shizukuMode: StateFlow<Boolean> = mutableShizukuMode.asStateFlow()
+
+    /** Whether auto-reroot on boot is enabled. */
+    val autoReroot: StateFlow<Boolean> = mutableAutoReroot.asStateFlow()
+
+    /** Whether a local payload file should be used instead of downloading. */
+    val localPayloadMode: StateFlow<Boolean> = mutableLocalPayloadMode.asStateFlow()
+
+    // Legacy aliases retained for call-sites that haven't been migrated
+    val state: StateFlow<InstallUiState> = uiState
+    val history: StateFlow<List<InstallHistoryEntry>> = installHistory
     val targetCatalog: StateFlow<TargetCatalogUiState> = mutableTargetCatalog.asStateFlow()
+
+    // -----------------------------------------------------------------------
+    // Init – populate device snapshot
+    // -----------------------------------------------------------------------
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val snap = runCatching { DeviceSnapshot.current() }.getOrNull()
+            val rooted = runCatching { NativeProbe.isKsuActive() }.getOrDefault(false)
+            val ksuVer = runCatching { NativeProbe.ksuVersion() }.getOrNull()
+            mutableUiState.value = mutableUiState.value.copy(
+                device = snap,
+                isRooted = rooted,
+                kernelSuVersion = ksuVer,
+                androidVersion = snap?.androidVersion,
+                securityPatch = snap?.securityPatch,
+                phase = InstallPhase.Ready,
+                statusMessage = app.getString(R.string.install_preparing),
+            )
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Actions expected by MainActivity
+    // -----------------------------------------------------------------------
+
+    /** Begin the root installation (optionally for a specific profile). */
+    fun startRoot(profile: TargetProfile? = null) {
+        install(profile)
+    }
+
+    /** Cancel the running session. */
+    fun stopSession() {
+        cancel()
+    }
+
+    /**
+     * Delete a single history entry by id.
+     * MainActivity references this as `deleteHistoryEntry(id)`.
+     */
+    fun deleteHistoryEntry(id: String) {
+        deleteHistoryEntries(setOf(id))
+    }
+
+    /** Delete all history entries. */
+    fun deleteAllHistoryEntries() {
+        val ids = mutableHistory.value.map { it.id }.toSet()
+        deleteHistoryEntries(ids)
+    }
+
+    /**
+     * Called when the user picks a profile in the target-selection sheet.
+     * Persists as [InstallUiState.selectedProfile].
+     */
+    fun selectProfile(profile: TargetProfile?) {
+        mutableUiState.value = mutableUiState.value.copy(selectedProfile = profile)
+    }
+
+    /**
+     * Stores a pending deep-link / notification install request so MainActivity
+     * can show a confirmation dialog before the install starts.
+     */
+    fun setPendingInstallRequest(profileId: String?) {
+        mutableUiState.value = mutableUiState.value.copy(pendingInstallRequest = profileId)
+    }
+
+    /** Clears the pending install request after the user has accepted/rejected it. */
+    fun consumePendingInstallRequest() {
+        mutableUiState.value = mutableUiState.value.copy(pendingInstallRequest = null)
+    }
+
+    // Settings setters ---------------------------------------------------------
+
+    fun setAdvancedMode(enabled: Boolean) {
+        AppPreferences.setAdvancedMode(app, enabled)
+        mutableAdvancedMode.value = enabled
+    }
+
+    fun setShizukuMode(enabled: Boolean) {
+        AppPreferences.setShizukuMode(app, enabled)
+        mutableShizukuMode.value = enabled
+    }
+
+    fun setAutoReroot(enabled: Boolean) {
+        AppPreferences.setAutoReroot(app, enabled)
+        mutableAutoReroot.value = enabled
+    }
+
+    fun setLocalPayloadMode(enabled: Boolean) {
+        AppPreferences.setLocalPayloadMode(app, enabled)
+        mutableLocalPayloadMode.value = enabled
+    }
+
+    fun setAccentColor(color: String) {
+        AppPreferences.setAccentColor(app, color)
+        mutableAccentColor.value = color
+    }
+
+    fun setThemeMode(mode: String) {
+        AppPreferences.setThemeMode(app, mode)
+        mutableThemeMode.value = mode
+    }
+
+    // -----------------------------------------------------------------------
+    // Discovery / catalog
+    // -----------------------------------------------------------------------
 
     fun startDiscovery() {
         if (discoveryJob?.isActive == true) return
@@ -138,9 +318,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 else -> try {
                     repository.resolveTarget(profileId)
                 } catch (e: Exception) {
-                    mutableState.value = mutableState.value.copy(
+                    mutableUiState.value = mutableUiState.value.copy(
                         phase = InstallPhase.Failed,
-                        message = e.message ?: "Unknown error",
+                        statusMessage = e.message ?: "Unknown error",
                     )
                     return@launch
                 }
@@ -158,8 +338,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             startHistory()
             try {
                 activeRunRebootUserspace = rebootUserspace
-                // Snapshot the Shizuku preference at the start of the run so the
-                // change cannot mix Shizuku and standalone execution between steps.
                 activeRunShizuku = AppPreferences.shizukuMode(app)
 
                 setPhase(InstallPhase.Checking, app.getString(R.string.install_preparing))
@@ -208,9 +386,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                         val resolved = try {
                             repository.resolveTarget(snapshot)
                         } catch (_: Exception) {
-                            mutableState.value = mutableState.value.copy(
+                            mutableUiState.value = mutableUiState.value.copy(
                                 phase = InstallPhase.Ready,
-                                message = app.getString(R.string.install_preparing),
+                                statusMessage = app.getString(R.string.install_preparing),
                             )
                             return@launch
                         }
@@ -236,13 +414,21 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                     runHelper("--reboot-userspace")
                 }
 
+                // Refresh root status after successful install
+                val nowRooted = runCatching { NativeProbe.isKsuActive() }.getOrDefault(true)
+                val nowVer = runCatching { NativeProbe.ksuVersion() }.getOrNull()
+                mutableUiState.value = mutableUiState.value.copy(
+                    isRooted = nowRooted,
+                    kernelSuVersion = nowVer,
+                )
+
                 setPhase(InstallPhase.Installed, app.getString(R.string.log_install_complete))
                 finishHistory(InstallRunResult.Succeeded)
             } catch (e: Exception) {
                 val msg = e.message ?: "Unknown error"
-                mutableState.value = mutableState.value.copy(
+                mutableUiState.value = mutableUiState.value.copy(
                     phase = InstallPhase.Failed,
-                    message = msg,
+                    statusMessage = msg,
                 )
                 appendLog("[!] Installation failed: $msg")
                 finishHistory(InstallRunResult.Failed)
@@ -265,7 +451,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         if (!shizuku) {
             require(helper.canExecute()) { app.getString(R.string.error_helper_unavailable) }
         }
-        val logPrefix = mutableState.value.log
+        val logPrefix = mutableUiState.value.log
         val bootToken = currentBootToken()
         val process = if (shizuku) {
             val stagedHelper = shizukuStage(nativeHelperFile(), SHIZUKU_HELPER_PATH, "755")
@@ -375,7 +561,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     private fun publishExploitLog(logPrefix: String, rawLog: String) {
         val clean = stripAnsi(rawLog)
         val lines = clean.lines().takeLast(MAX_LOG_LINES)
-        mutableState.value = mutableState.value.copy(log = logPrefix + lines.joinToString("\n"))
+        mutableUiState.value = mutableUiState.value.copy(log = logPrefix + lines.joinToString("\n"))
     }
 
     private suspend fun installKernelSu(payloads: VerifiedPayloads) {
@@ -385,7 +571,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         val stagedKsud: File
         if (shizukuEnabled()) {
             stagedKsud = shizukuStage(ksud, SHIZUKU_KSUD_PATH, "755")
-            val stagedHelper = shizukuStage(nativeHelperFile(), SHIZUKU_HELPER_PATH, "755")
+            shizukuStage(nativeHelperFile(), SHIZUKU_HELPER_PATH, "755")
             val stageCommand = "${shellQuote(stagedKsud.absolutePath)} install --path ${shellQuote(SHIZUKU_KSUD_STAGE_PATH)}"
             val stage = runHelper("-c", stageCommand)
             require(stage.code == 0) {
@@ -431,6 +617,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    @Suppress("unused")
     private fun storeInstallReceipt() {
         val receipt = File(app.filesDir, INSTALL_RECEIPT)
         try {
@@ -443,9 +630,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     private fun currentBootToken(): String? = runCatching {
         File("/proc/sys/kernel/random/boot_id").readText(Charsets.UTF_8).trim()
-    }.getOrElse {
-        null
-    }
+    }.getOrElse { null }
 
     private fun cachedP0Offset(bootToken: String?): String? {
         if (bootToken == null) return null
@@ -464,6 +649,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
             .apply()
     }
 
+    // -----------------------------------------------------------------------
+    // History helpers
+    // -----------------------------------------------------------------------
+
     private fun startHistory() {
         val entry = historyStore.create()
         activeHistoryEntry = entry
@@ -479,13 +668,13 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun updateHistoryLog() =
-        updateHistory { it.copy(log = mutableState.value.log) }
+        updateHistory { it.copy(log = mutableUiState.value.log) }
 
     private fun updateHistoryProfile(profileId: String) =
         updateHistory { it.copy(profileId = profileId) }
 
     private fun finishHistory(result: InstallRunResult) =
-        updateHistory { it.copy(completedAtMillis = System.currentTimeMillis(), result = result, log = mutableState.value.log) }
+        updateHistory { it.copy(completedAtMillis = System.currentTimeMillis(), result = result, log = mutableUiState.value.log) }
 
     private fun publishHistory(entry: InstallHistoryEntry) {
         mutableHistory.value = buildList {
@@ -494,20 +683,24 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // -----------------------------------------------------------------------
+    // State helpers
+    // -----------------------------------------------------------------------
+
     private fun setPhase(phase: InstallPhase, message: String) {
-        mutableState.value = mutableState.value.copy(phase = phase, message = message)
+        mutableUiState.value = mutableUiState.value.copy(phase = phase, statusMessage = message)
         updateHistoryLog()
     }
 
     private fun appendLog(line: String) {
-        val current = mutableState.value.log
+        val current = mutableUiState.value.log
         val lines = current.lines()
         val trimmed = if (lines.size >= MAX_LOG_LINES) {
             lines.takeLast(MAX_LOG_LINES - 1).joinToString("\n")
         } else {
             current
         }
-        mutableState.value = mutableState.value.copy(
+        mutableUiState.value = mutableUiState.value.copy(
             log = if (trimmed.isEmpty()) line else "$trimmed\n$line",
         )
         updateHistoryLog()
@@ -516,6 +709,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     private fun error(message: String): Nothing {
         throw IllegalStateException(message)
     }
+
+    // -----------------------------------------------------------------------
+    // Native helpers
+    // -----------------------------------------------------------------------
 
     private fun helperFile(): File =
         File(app.applicationInfo.nativeLibraryDir, "libcve43499root.so").also {
@@ -551,11 +748,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     }.toTypedArray()
 
     /**
-     * Runs the bootstrap helper for a short management command. Unlike the
-     * exploit run there is no log file to poll, so output is drained inline
-     * and a hard deadline guards against a helper that never exits — without
-     * this, a hung `--late-load` leaves the install stuck in LoadingKernelSu
-     * indefinitely.
+     * Runs the bootstrap helper for a short management command.
      */
     private suspend fun runHelper(vararg arguments: String): CommandResult {
         val helper = helperFile()
@@ -594,6 +787,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     private fun shellQuote(value: String) = "'${value.replace("'", "'\\''")}'"
 
+    // -----------------------------------------------------------------------
+    // Public misc
+    // -----------------------------------------------------------------------
+
     fun refresh() {
         mutableHistory.value = historyStore.closeInterruptedRuns()
     }
@@ -610,17 +807,20 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     fun cancel() {
         installJob?.cancel()
         installJob = null
-        if (mutableState.value.busy) {
-            mutableState.value = mutableState.value.copy(
+        if (mutableUiState.value.busy) {
+            mutableUiState.value = mutableUiState.value.copy(
                 phase = InstallPhase.Failed,
-                message = "Installation cancelled",
+                statusMessage = "Installation cancelled",
             )
         }
     }
 
     fun clearError() {
-        if (mutableState.value.phase == InstallPhase.Failed) {
-            mutableState.value = InstallUiState(phase = InstallPhase.Ready)
+        if (mutableUiState.value.phase == InstallPhase.Failed) {
+            mutableUiState.value = mutableUiState.value.copy(
+                phase = InstallPhase.Ready,
+                statusMessage = "",
+            )
         }
     }
 
@@ -629,6 +829,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
     private fun File.readTextIfPresent(): String =
         if (exists()) runCatching { readText(Charsets.UTF_8) }.getOrDefault("") else ""
+
+    // -----------------------------------------------------------------------
+    // Constants
+    // -----------------------------------------------------------------------
 
     companion object {
         internal const val PAYLOAD_EXPLOIT = "exploit"
@@ -656,12 +860,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private val EXPLOIT_STALL_MILLIS = 30.seconds.inWholeMilliseconds
         private val EXPLOIT_TOTAL_MILLIS = 10.minutes.inWholeMilliseconds
         private val HELPER_TIMEOUT_MILLIS = 60.seconds.inWholeMilliseconds
-        private val SHIZUKU_LOG_POLL_INTERVAL = 250.milliseconds.inWholeMilliseconds
         private val LOG_POLL_INTERVAL = 500.milliseconds.inWholeMilliseconds
         private val HELPER_POLL_INTERVAL = 100.milliseconds.inWholeMilliseconds
 
         private const val MAX_LOG_LINES = 200
         private const val MAX_DRAIN_BYTES = 65_536
-        private const val MAX_EARLY_OUTPUT_BYTES = 4_096
     }
 }
