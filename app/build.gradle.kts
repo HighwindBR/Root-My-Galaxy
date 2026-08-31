@@ -98,11 +98,10 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3:1.5.0-alpha24")
-    // Switched from material-icons-extended (~5 MB, 1200+ icons) to
-    // material-icons-core (~500 KB, 150 icons). R8 removes unused icons
-    // either way, but core avoids downloading and processing the full set.
-    // If a needed icon is missing at compile time, add extended back.
-    implementation("androidx.compose.material:material-icons-core")
+    // Keep extended: all icons used in the app are extended-only.
+    // R8 + isShrinkResources strip every unreferenced icon at build time,
+    // so the APK only contains the icons actually used.
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("com.materialkolor:material-kolor:4.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
