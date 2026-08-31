@@ -9,7 +9,13 @@ enum class AccentColor(val storedValue: String) {
     Blue("blue"),
     Violet("violet"),
     Green("green"),
-    Orange("orange");
+    Orange("orange"),
+    Purple("purple"),
+    Red("red"),
+    Pink("pink"),
+    Teal("teal"),
+    Yellow("yellow"),
+    Monochrome("monochrome");
 
     companion object {
         fun fromStoredValue(value: String?): AccentColor =
@@ -96,11 +102,6 @@ object AppPreferences {
             .apply()
     }
 
-    /**
-     * Whether [BootInstallService] should trigger a userspace reboot
-     * (`su -c svc power reboot userspace`) once [InstallPhase.Installed] succeeds.
-     * Defaults to false so the device does not reboot unexpectedly.
-     */
     fun rebootAfterInstall(context: Context): Boolean =
         prefs(context).getBoolean(REBOOT_AFTER_INSTALL, false)
 
@@ -110,26 +111,30 @@ object AppPreferences {
             .apply()
     }
 
-    @Synchronized
-    fun consumeInstallRequest(context: Context, requestId: String?): Boolean {
-        if (requestId.isNullOrBlank()) return false
-        val preferences = prefs(context)
-        if (preferences.getString(CONSUMED_INSTALL_REQUEST, null) == requestId) return false
-        return preferences.edit()
-            .putString(CONSUMED_INSTALL_REQUEST, requestId)
-            .commit()
+    fun consumePendingInstallRequest(context: Context): Boolean {
+        val prefs = prefs(context)
+        val consumed = prefs.getBoolean(CONSUMED_INSTALL_REQUEST, false)
+        if (!consumed) {
+            prefs.edit().putBoolean(CONSUMED_INSTALL_REQUEST, true).apply()
+        }
+        return consumed
+    }
+
+    fun resetPendingInstallRequest(context: Context) {
+        prefs(context).edit().putBoolean(CONSUMED_INSTALL_REQUEST, false).apply()
+    }
+
+    fun languageTag(context: Context): String {
+        val localeManager = context.getSystemService(LocaleManager::class.java)
+        return localeManager?.applicationLocales?.toLanguageTags().orEmpty()
+    }
+
+    fun setLanguageTag(context: Context, tag: String) {
+        val localeManager = context.getSystemService(LocaleManager::class.java) ?: return
+        val locales = if (tag.isBlank()) LocaleList.getEmptyLocaleList() else LocaleList.forLanguageTags(tag)
+        localeManager.applicationLocales = locales
     }
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-
-    fun languageTag(context: Context): String {
-        val locales = context.getSystemService(LocaleManager::class.java).applicationLocales
-        return if (locales.isEmpty) "" else locales[0].toLanguageTag()
-    }
-
-    fun setLanguage(context: Context, languageTag: String) {
-        context.getSystemService(LocaleManager::class.java).applicationLocales =
-            LocaleList.forLanguageTags(languageTag)
-    }
 }
