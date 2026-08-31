@@ -254,6 +254,7 @@
     <string name="settings_source_code">Source code</string>
     <string name="accent_dynamic">System Dynamic Color</string>
     <string name="accent_blue">Blue</string>
+    <string name="accent_violet">Violet</string>
     <string name="accent_green">Green</string>
     <string name="accent_purple">Purple</string>
     <string name="accent_red">Red</string>
