@@ -38,11 +38,17 @@ private val AppTypography = Typography(
 )
 
 private fun accentSeed(context: Context, accentColor: AccentColor): Color = when (accentColor) {
-    AccentColor.Dynamic -> Color(context.getColor(android.R.color.system_accent1_500))
-    AccentColor.Blue -> Color(0xFF415F91)
-    AccentColor.Violet -> Color(0xFF6750A4)
-    AccentColor.Green -> Color(0xFF356A35)
-    AccentColor.Orange -> Color(0xFF8B4F23)
+    AccentColor.Dynamic    -> Color(context.getColor(android.R.color.system_accent1_500))
+    AccentColor.Blue       -> Color(0xFF415F91)
+    AccentColor.Violet     -> Color(0xFF6750A4)
+    AccentColor.Green      -> Color(0xFF356A35)
+    AccentColor.Orange     -> Color(0xFF8B4F23)
+    AccentColor.Purple     -> Color(0xFF7B3FA0)
+    AccentColor.Red        -> Color(0xFFB3261E)
+    AccentColor.Pink       -> Color(0xFF9C27B0)
+    AccentColor.Teal       -> Color(0xFF00695C)
+    AccentColor.Yellow     -> Color(0xFFF9A825)
+    AccentColor.Monochrome -> Color(0xFF757575)
 }
 
 @Composable
