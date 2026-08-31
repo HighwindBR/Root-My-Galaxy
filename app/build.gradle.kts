@@ -34,8 +34,14 @@ android {
             // Sign with the debug keystore so CI can produce a complete,
             // installable APK without needing signing secrets.
             signingConfig = signingConfigs.getByName("debug")
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 full-mode (set in gradle.properties) + resource shrinking.
+            // Together these are the single biggest contributor to APK size.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
@@ -92,7 +98,11 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3:1.5.0-alpha24")
-    implementation("androidx.compose.material:material-icons-extended")
+    // Switched from material-icons-extended (~5 MB, 1200+ icons) to
+    // material-icons-core (~500 KB, 150 icons). R8 removes unused icons
+    // either way, but core avoids downloading and processing the full set.
+    // If a needed icon is missing at compile time, add extended back.
+    implementation("androidx.compose.material:material-icons-core")
     implementation("com.materialkolor:material-kolor:4.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
