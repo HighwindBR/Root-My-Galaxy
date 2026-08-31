@@ -16,6 +16,7 @@ import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 enum class InstallPhase {
