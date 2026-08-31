@@ -93,6 +93,14 @@
     <string name="phase_loading_ksu">Loading KernelSU using acquired bootstrap root</string>
     <string name="phase_installed">KernelSU module and control channel verified</string>
     <string name="phase_failed">Please check the log below to see where it failed</string>
+    <!-- install_phase_* aliases used by InstallActivity -->
+    <string name="install_phase_checking">Checking supported device and firmware</string>
+    <string name="install_phase_ready">Ready to install</string>
+    <string name="install_phase_downloading">Downloading pinned payload from GitHub</string>
+    <string name="install_phase_exploiting">This may take 10 minutes or more, and the device may heat up or become unresponsive.</string>
+    <string name="install_phase_loading_ksu">Loading KernelSU using acquired bootstrap root</string>
+    <string name="install_phase_installed">KernelSU module and control channel verified</string>
+    <string name="install_phase_failed">Please check the log below to see where it failed</string>
 
     <string name="status_ksu_active">KernelSU is enabled</string>
     <string name="status_not_installed">Not installed</string>
