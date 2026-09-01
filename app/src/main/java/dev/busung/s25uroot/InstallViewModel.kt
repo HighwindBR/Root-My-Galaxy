@@ -11,6 +11,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.InputStream
@@ -123,9 +126,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     private val mutableHistory = MutableStateFlow(historyStore.closeInterruptedRuns())
     private val mutableTargetCatalog = MutableStateFlow(TargetCatalogUiState())
 
-    // Settings-derived StateFlows written by the set* helpers below
-    private val mutableAccentColor = MutableStateFlow(AppPreferences.accentColor(app))
-    private val mutableThemeMode = MutableStateFlow(AppPreferences.themeMode(app))
+    // Settings-derived StateFlows – store the enum internally, expose String externally
+    private val mutableAccentColorEnum = MutableStateFlow(AppPreferences.accentColor(app))
+    private val mutableThemeModeEnum = MutableStateFlow(AppPreferences.themeMode(app))
     private val mutableAdvancedMode = MutableStateFlow(AppPreferences.advancedMode(app))
     private val mutableShizukuMode = MutableStateFlow(AppPreferences.shizukuMode(app))
     private val mutableAutoReroot = MutableStateFlow(AppPreferences.autoReroot(app))
@@ -153,11 +156,21 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     /** Flat history list. */
     val installHistory: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
 
-    /** Currently selected accent-color token. */
-    val accentColor: StateFlow<String> = mutableAccentColor.asStateFlow()
+    /**
+     * Currently selected accent-color token as a stored-value string
+     * (e.g. "dynamic", "blue", …).  MainActivity and SettingsScreen consume String.
+     */
+    val accentColor: StateFlow<String> = mutableAccentColorEnum
+        .map { it.storedValue }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, mutableAccentColorEnum.value.storedValue)
 
-    /** Currently selected theme mode ("system" / "light" / "dark"). */
-    val themeMode: StateFlow<String> = mutableThemeMode.asStateFlow()
+    /**
+     * Currently selected theme mode as a stored-value string
+     * ("system" / "light" / "dark").  MainActivity and SettingsScreen consume String.
+     */
+    val themeMode: StateFlow<String> = mutableThemeModeEnum
+        .map { it.storedValue }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, mutableThemeModeEnum.value.storedValue)
 
     /** Whether advanced (manual payload selection) mode is on. */
     val advancedMode: StateFlow<Boolean> = mutableAdvancedMode.asStateFlow()
@@ -183,12 +196,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     init {
         viewModelScope.launch(Dispatchers.IO) {
             val snap = runCatching { DeviceSnapshot.current() }.getOrNull()
-            val rooted = runCatching { NativeProbe.isKsuActive() }.getOrDefault(false)
-            val ksuVer = runCatching { NativeProbe.ksuVersion() }.getOrNull()
+            val rooted = runCatching { NativeProbe.isKernelSuActive() }.getOrDefault(false)
             mutableUiState.value = mutableUiState.value.copy(
                 device = snap,
                 isRooted = rooted,
-                kernelSuVersion = ksuVer,
+                kernelSuVersion = null,
                 androidVersion = snap?.androidVersion,
                 securityPatch = snap?.securityPatch,
                 phase = InstallPhase.Ready,
@@ -268,14 +280,18 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         mutableLocalPayloadMode.value = enabled
     }
 
+    /** Accepts the stored-value string (e.g. "blue", "dynamic") from the UI. */
     fun setAccentColor(color: String) {
-        AppPreferences.setAccentColor(app, color)
-        mutableAccentColor.value = color
+        val enum = AccentColor.fromStoredValue(color)
+        AppPreferences.setAccentColor(app, enum)
+        mutableAccentColorEnum.value = enum
     }
 
+    /** Accepts the stored-value string ("system", "light", "dark") from the UI. */
     fun setThemeMode(mode: String) {
-        AppPreferences.setThemeMode(app, mode)
-        mutableThemeMode.value = mode
+        val enum = AppThemeMode.fromStoredValue(mode)
+        AppPreferences.setThemeMode(app, enum)
+        mutableThemeModeEnum.value = enum
     }
 
     // -----------------------------------------------------------------------
@@ -415,11 +431,10 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 // Refresh root status after successful install
-                val nowRooted = runCatching { NativeProbe.isKsuActive() }.getOrDefault(true)
-                val nowVer = runCatching { NativeProbe.ksuVersion() }.getOrNull()
+                val nowRooted = runCatching { NativeProbe.isKernelSuActive() }.getOrDefault(true)
                 mutableUiState.value = mutableUiState.value.copy(
                     isRooted = nowRooted,
-                    kernelSuVersion = nowVer,
+                    kernelSuVersion = null,
                 )
 
                 setPhase(InstallPhase.Installed, app.getString(R.string.log_install_complete))
