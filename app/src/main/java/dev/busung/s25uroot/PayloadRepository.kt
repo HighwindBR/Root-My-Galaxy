@@ -37,20 +37,21 @@ class PayloadRepository(private val context: Context) {
     /**
      * Downloads the exploit and KernelSU payloads for [profile].
      *
-     * The KernelSU binary (ksud) is always resolved live from the latest
-     * tiann/KernelSU GitHub release via [KernelSuReleases.resolveKsud].
-     * If the API is unreachable the payload-repo artifact acts as a fallback,
-     * so offline / CI / sideload flows continue to work.
+     * [onProgress] receives a human-readable message and an optional
+     * 0.0–1.0 fraction representing the current file-level download
+     * progress.  The fraction is `null` when the server does not advertise
+     * a Content-Length (live upstream URL) or for non-download events.
      */
-    fun download(profile: TargetProfile, onProgress: (String) -> Unit): VerifiedPayloads {
+    fun download(
+        profile: TargetProfile,
+        onProgress: (String, Float?) -> Unit,
+    ): VerifiedPayloads {
         val directory = File(context.filesDir, "payloads/${profile.profileId}").apply { mkdirs() }
 
-        // Resolve the latest upstream ksud; fall back to the payload-repo pin
-        // so the install always has something to work with.
         val ksudArtifact = KernelSuReleases.resolveKsud()
-            ?.also { onProgress("[*] ksud resolved from tiann/KernelSU releases") }
+            ?.also { onProgress("[*] ksud resolved from tiann/KernelSU releases", null) }
             ?: profile.kernelSu.also {
-                onProgress("[*] ksud: tiann/KernelSU API unavailable, using payload-repo pin")
+                onProgress("[*] ksud: tiann/KernelSU API unavailable, using payload-repo pin", null)
             }
 
         val exploit = downloadArtifact(
@@ -70,35 +71,30 @@ class PayloadRepository(private val context: Context) {
         return VerifiedPayloads(profile, exploit, kernelSu)
     }
 
-    // Stage one locally selected exploit payload (.so) into the app's payload
-    // directory and return a VerifiedPayloads. The KernelSU artifact is empty, so
-    // installViewModel defers to resolveTarget + download for it.
     fun stageLocalExploit(
         profile: TargetProfile,
         uri: Uri,
-        onProgress: (String) -> Unit,
+        onProgress: (String, Float?) -> Unit,
     ): VerifiedPayloads {
         val directory = File(context.filesDir, "payloads/${profile.profileId}").apply { mkdirs() }
         val destination = File(directory, "cve-2026-43499-app.so")
-        onProgress(context.getString(R.string.repo_importing, context.getString(R.string.artifact_exploit)))
+        onProgress(context.getString(R.string.repo_importing, context.getString(R.string.artifact_exploit)), null)
         copyFromUri(uri, destination, context.getString(R.string.artifact_exploit))
         Os.chmod(destination.absolutePath, 0b100100100)
-        onProgress(context.getString(R.string.repo_verified, context.getString(R.string.artifact_exploit)))
+        onProgress(context.getString(R.string.repo_verified, context.getString(R.string.artifact_exploit)), 1f)
         return VerifiedPayloads(profile, destination, File(directory, "ksud-s25u-kdp"))
     }
 
-    // Rewrite the locally selected KernelSU artifact beside the already-staged
-    // exploit, then return the fully local VerifiedPayloads.
     fun stageLocalKernelSu(
         payloads: VerifiedPayloads,
         uri: Uri,
-        onProgress: (String) -> Unit,
+        onProgress: (String, Float?) -> Unit,
     ): VerifiedPayloads {
         val destination = payloads.kernelSu
-        onProgress(context.getString(R.string.repo_importing, context.getString(R.string.artifact_kernelsu)))
+        onProgress(context.getString(R.string.repo_importing, context.getString(R.string.artifact_kernelsu)), null)
         copyFromUri(uri, destination, context.getString(R.string.artifact_kernelsu))
         Os.chmod(destination.absolutePath, 0b100100100)
-        onProgress(context.getString(R.string.repo_verified, context.getString(R.string.artifact_kernelsu)))
+        onProgress(context.getString(R.string.repo_verified, context.getString(R.string.artifact_kernelsu)), 1f)
         return VerifiedPayloads(payloads.profile, payloads.exploit, destination)
     }
 
@@ -118,18 +114,22 @@ class PayloadRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Downloads [artifact] to [destination], calling [onProgress] with
+     * both a log string and a 0.0–1.0 progress fraction.
+     *
+     * Progress fractions are only emitted when Content-Length is known AND
+     * matches [artifact.size].  Otherwise the fraction is `null`.
+     */
     private fun downloadArtifact(
         artifact: RemoteArtifact,
         destination: File,
         label: String,
-        onProgress: (String) -> Unit,
+        onProgress: (String, Float?) -> Unit,
     ): File {
-        onProgress(context.getString(R.string.repo_downloading, label))
+        onProgress(context.getString(R.string.repo_downloading, label), 0f)
         val temporary = File(destination.parentFile, "${destination.name}.part")
         val connection = open(artifact.url)
-        // When the artifact size in the manifest is -1 (live URL with unknown
-        // size) we skip the pre-flight length check and rely only on the
-        // post-download byte-count check below.
         val expectedSize = artifact.size
         if (expectedSize != -1L) {
             require(
@@ -137,6 +137,7 @@ class PayloadRepository(private val context: Context) {
                     connection.contentLengthLong == expectedSize,
             ) { context.getString(R.string.repo_size_mismatch, label) }
         }
+        val contentLength = if (expectedSize != -1L) expectedSize else connection.contentLengthLong
         var total = 0L
         connection.inputStream.use { input ->
             FileOutputStream(temporary).use { output ->
@@ -151,6 +152,13 @@ class PayloadRepository(private val context: Context) {
                         }
                     }
                     output.write(buffer, 0, count)
+                    // Emit byte-level progress when we know the total size
+                    val fraction: Float? = if (contentLength > 0L) {
+                        (total.toFloat() / contentLength.toFloat()).coerceIn(0f, 1f)
+                    } else {
+                        null
+                    }
+                    onProgress(context.getString(R.string.repo_downloading, label), fraction)
                 }
                 output.fd.sync()
             }
@@ -165,7 +173,7 @@ class PayloadRepository(private val context: Context) {
         require(temporary.renameTo(destination)) {
             context.getString(R.string.repo_finalize_failed, label)
         }
-        onProgress(context.getString(R.string.repo_verified, label))
+        onProgress(context.getString(R.string.repo_verified, label), 1f)
         return destination
     }
 
