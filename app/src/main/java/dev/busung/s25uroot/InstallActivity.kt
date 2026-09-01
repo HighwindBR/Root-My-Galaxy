@@ -13,6 +13,8 @@ import androidx.activity.viewModels
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -216,13 +218,55 @@ fun InstallScreen(
                 }
             }
 
-            // ── Progress bar while busy ────────────────────────────────────────
+            // ── Progress bar + real-time percentage ───────────────────────────
             if (installState.busy) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
+                val rawProgress = installState.progress
+                if (rawProgress != null) {
+                    // Animate the bar value so it never jumps backwards visually
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = rawProgress.coerceIn(0f, 1f),
+                        animationSpec = tween(durationMillis = 300),
+                        label = "installProgress",
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = when (installState.phase) {
+                                    InstallPhase.Downloading    -> stringResource(R.string.install_phase_downloading)
+                                    InstallPhase.Exploiting     -> stringResource(R.string.install_phase_exploiting)
+                                    InstallPhase.LoadingKernelSu -> stringResource(R.string.install_phase_loading_ksu)
+                                    else -> stringResource(R.string.install_phase_checking)
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = installState.progressLabel ?: "${(rawProgress * 100).toInt()} %",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                    }
+                } else {
+                    // No progress value yet — indeterminate fallback
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
             }
 
             // ── Log output ───────────────────────────────────────────────────
