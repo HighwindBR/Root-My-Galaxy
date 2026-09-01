@@ -154,6 +154,7 @@ fun InstallScreen(
             ) {
                 val phaseIcon: ImageVector = when (installState.phase) {
                     InstallPhase.Installed -> Icons.Rounded.Check
+                    InstallPhase.Done      -> Icons.Rounded.Check
                     InstallPhase.Failed    -> Icons.Rounded.Error
                     InstallPhase.Downloading -> Icons.Rounded.CloudDownload
                     InstallPhase.Exploiting,
@@ -165,6 +166,7 @@ fun InstallScreen(
                     shape = CircleShape,
                     color = when (installState.phase) {
                         InstallPhase.Installed -> MaterialTheme.colorScheme.primaryContainer
+                        InstallPhase.Done      -> MaterialTheme.colorScheme.primaryContainer
                         InstallPhase.Failed    -> MaterialTheme.colorScheme.errorContainer
                         else -> MaterialTheme.colorScheme.secondaryContainer
                     },
@@ -192,6 +194,7 @@ fun InstallScreen(
                             InstallPhase.Exploiting     -> stringResource(R.string.install_phase_exploiting)
                             InstallPhase.LoadingKernelSu -> stringResource(R.string.install_phase_loading_ksu)
                             InstallPhase.Installed      -> stringResource(R.string.install_phase_installed)
+                            InstallPhase.Done           -> stringResource(R.string.install_phase_installed)
                             InstallPhase.Failed         -> stringResource(R.string.install_phase_failed)
                             InstallPhase.Ready          -> stringResource(R.string.install_phase_ready)
                         },
@@ -244,7 +247,8 @@ fun InstallScreen(
 
             // ── Actions ──────────────────────────────────────────────────────
             when (installState.phase) {
-                InstallPhase.Installed -> {
+                InstallPhase.Installed,
+                InstallPhase.Done -> {
                     FilledTonalButton(
                         onClick = onClose,
                         modifier = Modifier.fillMaxWidth(),
