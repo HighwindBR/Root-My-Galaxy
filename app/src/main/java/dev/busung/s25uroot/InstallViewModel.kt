@@ -2,6 +2,7 @@ package dev.busung.s25uroot
 
 import android.app.Application
 import android.net.Uri
+import android.os.Build
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -203,8 +204,8 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 device = snap,
                 isRooted = rooted,
                 kernelSuVersion = null,
-                androidVersion = snap?.androidVersion,
-                securityPatch = snap?.securityPatch,
+                androidVersion = snap?.androidRelease,
+                securityPatch = Build.VERSION.SECURITY_PATCH,
                 phase = InstallPhase.Ready,
                 statusMessage = app.getString(R.string.install_preparing),
             )

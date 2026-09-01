@@ -197,6 +197,7 @@ fun InstallScreen(
                             InstallPhase.Done           -> stringResource(R.string.install_phase_installed)
                             InstallPhase.Failed         -> stringResource(R.string.install_phase_failed)
                             InstallPhase.Ready          -> stringResource(R.string.install_phase_ready)
+                            InstallPhase.Running        -> stringResource(R.string.install_phase_checking)
                         },
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -276,7 +277,12 @@ fun InstallScreen(
                         }
                     }
                 }
-                else -> Unit
+                InstallPhase.Checking,
+                InstallPhase.Ready,
+                InstallPhase.Downloading,
+                InstallPhase.Exploiting,
+                InstallPhase.LoadingKernelSu,
+                InstallPhase.Running -> Unit
             }
         }
     }
