@@ -35,6 +35,7 @@ enum class InstallPhase {
     Installed,
     Done,
     Failed,
+    Running,
 }
 
 private enum class PayloadSource { Remote, Local }
@@ -71,6 +72,7 @@ data class InstallUiState(
             InstallPhase.Downloading,
             InstallPhase.Exploiting,
             InstallPhase.LoadingKernelSu,
+            InstallPhase.Running,
         )
 
     // Legacy alias – used in some internal call-sites

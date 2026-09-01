@@ -650,6 +650,7 @@ fun HistoryEntryItem(entry: InstallHistoryEntry, onDelete: () -> Unit) {
                 val resultLabel = when (entry.result) {
                     InstallRunResult.Succeeded -> stringResource(R.string.history_succeeded)
                     InstallRunResult.Failed -> stringResource(R.string.history_failed)
+                    InstallRunResult.Running -> stringResource(R.string.history_running)
                     null -> if (entry.completedAtMillis == null)
                         stringResource(R.string.history_running)
                     else
@@ -661,6 +662,7 @@ fun HistoryEntryItem(entry: InstallHistoryEntry, onDelete: () -> Unit) {
                     color = when (entry.result) {
                         InstallRunResult.Succeeded -> MaterialTheme.colorScheme.primary
                         InstallRunResult.Failed -> MaterialTheme.colorScheme.error
+                        InstallRunResult.Running -> MaterialTheme.colorScheme.onSurfaceVariant
                         null -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
@@ -873,8 +875,6 @@ fun AppTheme(
     themeMode: String,
     content: @Composable () -> Unit,
 ) {
-    // Use Material3 dynamic color / color scheme based on settings.
-    // isDark is derived from themeMode; for "system" we use isSystemInDarkTheme().
     val isDark = when (themeMode) {
         "dark" -> true
         "light" -> false
