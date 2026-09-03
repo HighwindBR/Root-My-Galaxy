@@ -1,6 +1,7 @@
 package dev.busung.s25uroot
 
 import android.app.Application
+import android.net.Uri
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -68,6 +69,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     private var discoveryJob: Job? = null
     private var installJob: Job? = null
     private var activeHistoryEntry: InstallHistoryEntry? = null
+    private var localPayloadUris: Map<String, Uri> = emptyMap()
     val state: StateFlow<InstallUiState> = mutableState.asStateFlow()
     val history: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
     val targetCatalog: StateFlow<TargetCatalogUiState> = mutableTargetCatalog.asStateFlow()
@@ -133,6 +135,65 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 )
             } catch (error: Throwable) {
                 TargetCatalogUiState(error = error.message ?: error.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun setLocalPayloadUris(uris: Map<String, Uri>) {
+        localPayloadUris = uris
+    }
+
+    fun installByProfileId(profileId: String?, rebootUserspaceOverride: Boolean?) {
+        if (installJob?.isActive == true || mutableState.value.phase == InstallPhase.Installed) return
+        discoveryJob?.cancel()
+        installJob = viewModelScope.launch(Dispatchers.IO) {
+            mutableState.value = InstallUiState(
+                phase = InstallPhase.Checking,
+                probeOutput = mutableState.value.probeOutput,
+            )
+            startHistory()
+            try {
+                if (shizukuEnabled()) {
+                    appendLog(app.getString(R.string.log_shizuku_prepare))
+                    if (!ShizukuController.isRunning() && !ShizukuController.pingUntilRunning()) {
+                        error(app.getString(R.string.error_shizuku_unavailable))
+                    }
+                    if (!ShizukuController.isGranted() && !ShizukuController.requestPermission()) {
+                        error(app.getString(R.string.error_shizuku_permission))
+                    }
+                    appendLog(app.getString(R.string.log_shizuku_permission))
+                }
+                setPhase(InstallPhase.Checking, app.getString(R.string.status_checking_github))
+                val profile = if (profileId == null) {
+                    repository.resolveTarget(DeviceSnapshot.current())
+                } else {
+                    repository.resolveTarget(profileId)
+                }
+                appendLog(app.getString(R.string.log_profile, profile.profileId))
+                updateHistoryProfile(profile.profileId)
+
+                setPhase(InstallPhase.Downloading, app.getString(R.string.status_downloading_payload))
+                val payloads = repository.download(profile) { appendLog("[*] $it") }
+                appendLog(app.getString(R.string.log_download_verified))
+
+                setPhase(InstallPhase.Exploiting, app.getString(R.string.status_exploit_running))
+                executeExploit(payloads.exploit)
+
+				if (AppPreferences.disableKsuModules(app)) {
+					DisableConflictingKSUModules()
+				} else {
+					appendLog("[*] Disable KSU Modules option is OFF")
+				}
+
+				setPhase(InstallPhase.LoadingKernelSu, app.getString(R.string.status_ksu_loading))
+
+                setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
+                appendLog(app.getString(R.string.log_install_complete))
+                finishHistory(InstallRunResult.Succeeded)
+            } catch (error: Throwable) {
+                appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
+                setPhase(InstallPhase.Failed, app.getString(R.string.status_install_failed))
+                finishHistory(InstallRunResult.Failed)
             }
         }
     }
@@ -612,6 +673,8 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     private fun File.readTextIfPresent(): String = if (exists()) readText() else ""
 
     companion object {
+        const val PAYLOAD_EXPLOIT = "exploit"
+        const val PAYLOAD_KERNELSU = "kernelsu"
         private const val EXPLOIT_ATTEMPTS = "24"
         private const val P0_ATTEMPT_TIMEOUT_SEC = "45"
         private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "120"
