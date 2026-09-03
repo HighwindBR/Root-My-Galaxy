@@ -119,6 +119,8 @@
     <string name="artifact_kernelsu">KernelSU</string>
     <string name="repo_no_profile">No compatible payload supports this model and kernel version</string>
     <string name="repo_downloading">Downloading %1$s</string>
+	<string name="repo_importing">Importing %s</string>
+    <string name="repo_local_open_failed">Failed to open %s</string>
     <string name="repo_size_mismatch">%1$s size does not match the support manifest</string>
     <string name="repo_size_exceeded">%1$s exceeded the declared size</string>
     <string name="repo_incomplete">%1$s download is incomplete</string>
