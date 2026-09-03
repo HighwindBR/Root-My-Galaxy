@@ -172,6 +172,10 @@
     <string name="history_select_all">Select all</string>
     <string name="history_clear_selection">Clear selection</string>
     <string name="history_delete_selected">Delete (%1$d)</string>
+    <string name="notification_channel_boot">Boot Install Service</string>
+    <string name="settings_disable_ksu_modules">Disable KSU Modules</string>
+    <string name="settings_shizuku_mode">Use Shizuku</string>
+    <string name="settings_check_update">Check for Updates</string>
     <plurals name="history_delete_selected_title">
         <item quantity="one">Delete this run?</item>
         <item quantity="other">Delete %1$d runs?</item>
