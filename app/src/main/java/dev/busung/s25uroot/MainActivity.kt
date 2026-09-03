@@ -237,6 +237,18 @@ private enum class CompatibilityWarning {
     KernelVersion,
 }
 
+private data class InstallerStep(
+    @StringRes val title: Int,
+    @StringRes val detail: Int,
+    val icon: ImageVector,
+)
+
+private val installerSteps = listOf(
+    InstallerStep(R.string.step1_title, R.string.step1_detail, Icons.Rounded.Code),
+    InstallerStep(R.string.step2_title, R.string.step2_detail, Icons.Rounded.Security),
+    InstallerStep(R.string.step3_title, R.string.step3_detail, Icons.Rounded.CheckCircle),
+)
+
 private val languageOptions = listOf(
     LanguageOption(R.string.language_system, ""),
     LanguageOption(R.string.language_korean, "ko"),
@@ -1000,484 +1012,114 @@ private fun HistoryPage(
         .filter { it.result != InstallRunResult.Running }
         .map { it.id }
         .toSet()
-    val selecting = selectionIds.isNotEmpty()
-    BackHandler(enabled = selectedEntry != null || selecting) {
-        if (selecting) {
-            selectionIds = emptySet()
-        } else {
-            selectedHistoryId = null
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(padding),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 54.dp, bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.nav_history),
+                    style = MaterialTheme.typography.headlineLarge,
+                )
+            }
+        }
+
+        items(history) { entry ->
+            HistoryCard(
+                entry = entry,
+                isSelected = entry.id == selectedHistoryId,
+                onSelect = {
+                    selectedHistoryId = if (selectedHistoryId == entry.id) null else entry.id
+                },
+            )
         }
     }
 
-    pendingDeleteIds?.let { ids ->
+    if (pendingDeleteIds != null) {
         AlertDialog(
             onDismissRequest = { pendingDeleteIds = null },
-            icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
-            title = {
-                DialogDimAmount(0.34f)
-                Text(pluralStringResource(R.plurals.history_delete_selected_title, ids.size, ids.size))
-            },
-            text = { Text(pluralStringResource(R.plurals.history_delete_selected_body, ids.size, ids.size)) },
+            title = { Text(stringResource(R.string.history_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.history_delete_confirm_body)) },
             confirmButton = {
-                FilledTonalButton(onClick = {
-                    clickHaptic(view)
-                    onDeleteEntries(ids)
-                    selectionIds = emptySet()
-                    pendingDeleteIds = null
-                }) {
-                    Text(stringResource(R.string.history_delete))
+                FilledTonalButton(
+                    onClick = {
+                        onDeleteEntries(pendingDeleteIds!!)
+                        pendingDeleteIds = null
+                    },
+                ) {
+                    Text(stringResource(R.string.action_delete))
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    clickHaptic(view)
-                    pendingDeleteIds = null
-                }) {
+                TextButton(onClick = { pendingDeleteIds = null }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },
         )
     }
-
-    AnimatedContent(
-        targetState = selectedEntry,
-        contentKey = { it?.id ?: "history-list" },
-        label = "history-detail",
-    ) { entry ->
-        if (entry == null) {
-            HistoryList(
-                padding = padding,
-                history = history,
-                selectionIds = selectionIds,
-                selectableIds = selectableIds,
-                onToggleSelection = { id ->
-                    selectionIds = if (id in selectionIds) {
-                        selectionIds - id
-                    } else {
-                        selectionIds + id
-                    }
-                },
-                onSelectAll = {
-                    selectionIds = if (selectionIds.size == selectableIds.size) {
-                        emptySet()
-                    } else {
-                        selectableIds
-                    }
-                },
-                onClearSelection = { selectionIds = emptySet() },
-                onEntryClick = { selectedHistoryId = it.id },
-                onDeleteSelected = { pendingDeleteIds = selectionIds },
-            )
-        } else {
-            HistoryDetail(
-                padding = padding,
-                entry = entry,
-                onBack = { selectedHistoryId = null },
-            )
-        }
-    }
 }
 
 @Composable
-private fun HistoryList(
-    padding: PaddingValues,
-    history: List<InstallHistoryEntry>,
-    selectionIds: Set<String>,
-    selectableIds: Set<String>,
-    onToggleSelection: (String) -> Unit,
-    onSelectAll: () -> Unit,
-    onClearSelection: () -> Unit,
-    onEntryClick: (InstallHistoryEntry) -> Unit,
-    onDeleteSelected: () -> Unit,
+private fun HistoryCard(
+    entry: InstallHistoryEntry,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
 ) {
-    val view = LocalView.current
-    val selecting = selectionIds.isNotEmpty()
-    Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = 20.dp,
-                end = 20.dp,
-                bottom = 96.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.history_title),
-                            style = MaterialTheme.typography.headlineLarge,
-                        )
-                    }
-                    AnimatedVisibility(
-                        visible = selecting,
-                        enter = fadeIn() + scaleIn(initialScale = 0.9f),
-                        exit = fadeOut() + scaleOut(targetScale = 0.9f),
-                    ) {
-                        Row {
-                            IconButton(onClick = {
-                                clickHaptic(view)
-                                onSelectAll()
-                            }) {
-                                Icon(
-                                    Icons.Rounded.SelectAll,
-                                    contentDescription = stringResource(R.string.history_select_all),
-                                )
-                            }
-                            IconButton(onClick = {
-                                clickHaptic(view)
-                                onClearSelection()
-                            }) {
-                                Icon(
-                                    Icons.Rounded.Close,
-                                    contentDescription = stringResource(R.string.history_clear_selection),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            if (history.isEmpty()) {
-                item { EmptyHistoryCard() }
-            } else {
-                itemsIndexed(history, key = { _, entry -> entry.id }) { _, entry ->
-                    HistoryEntryCard(
-                        entry = entry,
-                        selectionMode = selecting,
-                        isSelected = entry.id in selectionIds,
-                        selectable = entry.id in selectableIds,
-                        onClick = {
-                            if (selecting) {
-                                onToggleSelection(entry.id)
-                            } else {
-                                onEntryClick(entry)
-                            }
-                        },
-                        onLongClick = {
-                            if (entry.id in selectableIds) onToggleSelection(entry.id)
-                        },
-                    )
-                }
-            }
-        }
-        AnimatedVisibility(
-            visible = selecting,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-            enter = fadeIn() + scaleIn(initialScale = 0.85f),
-            exit = fadeOut() + scaleOut(targetScale = 0.85f),
-        ) {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    clickHaptic(view)
-                    onDeleteSelected()
-                },
-                icon = { Icon(Icons.Rounded.Delete, contentDescription = null) },
-                text = { Text(stringResource(R.string.history_delete_selected, selectionIds.size)) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun EmptyHistoryCard() {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() },
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
         ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(32.dp))
-            Column {
-                Text(stringResource(R.string.history_empty_title), style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    when (entry.result) {
+                        InstallRunResult.Success -> Icons.Rounded.CheckCircle
+                        InstallRunResult.Failed -> Icons.Rounded.Error
+                        InstallRunResult.Running -> Icons.Rounded.Schedule
+                    },
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                )
                 Text(
-                    stringResource(R.string.history_empty_description),
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = entry.profileName,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(entry.timestamp)),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (isSelected && entry.message.isNotEmpty()) {
+                Text(
+                    text = entry.message,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
     }
-}
-
-@Composable
-private fun HistoryEntryCard(
-    entry: InstallHistoryEntry,
-    selectionMode: Boolean,
-    isSelected: Boolean,
-    selectable: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    val view = LocalView.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val shape = expressiveClickableCardShape(interactionSource)
-    val containerColor = historyResultContainerColor(entry.result)
-    val contentColor = historyResultContentColor(entry.result)
-    val borderWidth by animateDpAsState(
-        targetValue = if (selectionMode && isSelected) 2.dp else 0.dp,
-        label = "history-card-border",
-    )
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .combinedClickable(
-                interactionSource = interactionSource,
-                onClick = {
-                    clickHaptic(view)
-                    onClick()
-                },
-                onLongClick = {
-                    clickHaptic(view)
-                    onLongClick()
-                },
-            ),
-        shape = shape,
-        border = if (borderWidth > 0.dp) {
-            BorderStroke(borderWidth, MaterialTheme.colorScheme.secondary)
-        } else {
-            null
-        },
-        colors = CardDefaults.cardColors(
-            containerColor = containerColor,
-            contentColor = contentColor,
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 15.dp)
-                .animateContentSize(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(13.dp),
-        ) {
-            Crossfade(
-                targetState = selectionMode,
-                label = "history-leading",
-                modifier = Modifier.size(48.dp),
-            ) { selecting ->
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    if (selecting) {
-                        Checkbox(
-                            checked = isSelected,
-                            onCheckedChange = null,
-                            enabled = selectable,
-                        )
-                    } else {
-                        Icon(historyResultIcon(entry.result), contentDescription = null, modifier = Modifier.size(30.dp))
-                    }
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(historyResultLabel(entry.result), style = MaterialTheme.typography.titleMedium)
-                Text(
-                    formatHistoryTime(entry.startedAtMillis),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor.copy(alpha = 0.78f),
-                )
-            }
-            if (!selectionMode) {
-                Icon(Icons.Rounded.ChevronRight, contentDescription = null)
-            }
-        }
-    }
-}
-
-@Composable
-private fun HistoryDetail(
-    padding: PaddingValues,
-    entry: InstallHistoryEntry,
-    onBack: () -> Unit,
-) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val exportLogLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        result.data?.data?.let { uri -> saveRunLog(context, uri, entry) }
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(
-                modifier = Modifier.padding(top = 12.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                IconButton(onClick = {
-                    clickHaptic(view)
-                    onBack()
-                }) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                }
-                Text(
-                    stringResource(R.string.history_detail_title),
-                    style = MaterialTheme.typography.headlineLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = {
-                    clickHaptic(view)
-                    exportLogLauncher.launch(
-                        Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TITLE, runLogFileName(entry))
-                        },
-                    )
-                }) {
-                    Icon(Icons.Rounded.Save, contentDescription = stringResource(R.string.export_log))
-                }
-            }
-        }
-        item { HistoryResultCard(entry) }
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                ),
-            ) {
-                Text(
-                    text = entry.log.ifBlank { stringResource(R.string.history_log_empty) },
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HistoryResultCard(entry: InstallHistoryEntry) {
-    val containerColor = historyResultContainerColor(entry.result)
-    val contentColor = historyResultContentColor(entry.result)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = containerColor, contentColor = contentColor),
-    ) {
-        Row(
-            modifier = Modifier.padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Icon(historyResultIcon(entry.result), contentDescription = null, modifier = Modifier.size(38.dp))
-            Column {
-                Text(historyResultLabel(entry.result), style = MaterialTheme.typography.titleLarge)
-                Text(
-                    stringResource(R.string.history_started, formatHistoryTime(entry.startedAtMillis)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor.copy(alpha = 0.78f),
-                )
-                entry.completedAtMillis?.let { completedAt ->
-                    Text(
-                        stringResource(R.string.history_completed, formatHistoryTime(completedAt)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = contentColor.copy(alpha = 0.78f),
-                    )
-                }
-                entry.profileId?.let { profileId ->
-                    Text(
-                        stringResource(R.string.history_payload, profileId),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = contentColor.copy(alpha = 0.78f),
-                    )
-                }
-                Text(
-                    stringResource(
-                        if (entry.usedShizuku) {
-                            R.string.history_shizuku_used
-                        } else {
-                            R.string.history_shizuku_not_used
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor.copy(alpha = 0.78f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun historyResultLabel(result: InstallRunResult): String = stringResource(
-    when (result) {
-        InstallRunResult.Running -> R.string.history_running
-        InstallRunResult.Succeeded -> R.string.history_succeeded
-        InstallRunResult.Failed -> R.string.history_failed
-    },
-)
-
-private fun historyResultIcon(result: InstallRunResult): ImageVector = when (result) {
-    InstallRunResult.Running -> Icons.Rounded.Schedule
-    InstallRunResult.Succeeded -> Icons.Rounded.CheckCircle
-    InstallRunResult.Failed -> Icons.Rounded.Error
-}
-
-@Composable
-private fun historyResultContainerColor(result: InstallRunResult): Color = when (result) {
-    InstallRunResult.Running -> MaterialTheme.colorScheme.tertiaryContainer
-    InstallRunResult.Succeeded -> MaterialTheme.colorScheme.primaryContainer
-    InstallRunResult.Failed -> MaterialTheme.colorScheme.errorContainer
-}
-
-@Composable
-private fun historyResultContentColor(result: InstallRunResult): Color = when (result) {
-    InstallRunResult.Running -> MaterialTheme.colorScheme.onTertiaryContainer
-    InstallRunResult.Succeeded -> MaterialTheme.colorScheme.onPrimaryContainer
-    InstallRunResult.Failed -> MaterialTheme.colorScheme.onErrorContainer
-}
-
-@Composable
-private fun formatHistoryTime(timestamp: Long): String {
-    val locale = LocalConfiguration.current.locales[0]
-    return remember(timestamp, locale) {
-        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM, locale)
-            .format(Date(timestamp))
-    }
-}
-
-private fun runLogFileName(entry: InstallHistoryEntry): String =
-    "RootMyGalaxy-" +
-        SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date(entry.startedAtMillis)) +
-        "-${entry.result.name.lowercase(Locale.US)}.log"
-
-private fun saveRunLog(context: Context, uri: Uri, entry: InstallHistoryEntry) {
-    val content = entry.log.ifBlank { context.getString(R.string.history_log_empty) }
-    val saved = runCatching {
-        context.contentResolver.openOutputStream(uri)?.use { output ->
-            output.write(content.toByteArray(Charsets.UTF_8))
-        } ?: error("open failed")
-        true
-    }.getOrDefault(false)
-    Toast.makeText(
-        context,
-        if (saved) {
-            context.getString(R.string.export_log_saved)
-        } else {
-            context.getString(R.string.export_log_failed)
-        },
-        Toast.LENGTH_LONG,
-    ).show()
 }
 
 @Composable
@@ -1497,910 +1139,126 @@ private fun SettingsPage(
     onDisableKsuModulesChanged: (Boolean) -> Unit,
     onShizukuModeChanged: (Boolean) -> Unit,
 ) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val scope = rememberCoroutineScope()
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var showColorDialog by remember { mutableStateOf(false) }
-    var showAboutDialog by remember { mutableStateOf(false) }
-    var showShizukuMissingDialog by remember { mutableStateOf(false) }
-    var languageMenuTop by remember { mutableStateOf(32.dp) }
-    var colorMenuTop by remember { mutableStateOf(32.dp) }
-    val density = LocalDensity.current
-    val currentLanguageTag = AppPreferences.languageTag(context)
-
-    if (showShizukuMissingDialog) {
-        AlertDialog(
-            onDismissRequest = { showShizukuMissingDialog = false },
-            icon = { Icon(Icons.Rounded.Info, contentDescription = null) },
-            title = {
-                DialogDimAmount(0.34f)
-                Text(stringResource(R.string.shizuku_not_running_title))
-            },
-            text = { Text(stringResource(R.string.shizuku_not_running_body)) },
-            confirmButton = {
-                FilledTonalButton(onClick = {
-                    clickHaptic(view)
-                    showShizukuMissingDialog = false
-                    openShizukuManager(context)
-                }) {
-                    Text(stringResource(R.string.action_download_shizuku))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    clickHaptic(view)
-                    showShizukuMissingDialog = false
-                }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
-    }
-
-    if (showLanguageDialog) {
-        SideChoiceMenu(
-            choices = languageOptions.map { stringResource(it.label) },
-            selectedIndex = languageOptions.indexOfFirst { languageMatches(it, currentLanguageTag) }
-                .coerceAtLeast(0),
-            topOffset = languageMenuTop,
-            onSelected = { index ->
-                showLanguageDialog = false
-                AppPreferences.setLanguage(context, languageOptions[index].tag)
-            },
-            onDismiss = { showLanguageDialog = false },
-        )
-    }
-
-    if (showColorDialog) {
-        val colors = AccentColor.entries
-        SideChoiceMenu(
-            choices = colors.map { accentLabel(it) },
-            selectedIndex = colors.indexOf(accentColor),
-            topOffset = colorMenuTop,
-            onSelected = { index ->
-                showColorDialog = false
-                onAccentColorChanged(colors[index])
-            },
-            onDismiss = { showColorDialog = false },
-        )
-    }
-
-    if (showAboutDialog) {
-        AboutDialog(onDismiss = { showAboutDialog = false })
-    }
-
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Column(modifier = Modifier.padding(top = 20.dp, bottom = 18.dp)) {
-                Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineLarge)
-                AppVersionText(
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        item { SectionLabel(stringResource(R.string.appearance)) }
-        item {
-            ThemeModeSelector(themeMode, onThemeModeChanged)
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                SettingsCard(
-                    modifier = Modifier.onGloballyPositioned { coordinates ->
-                        colorMenuTop = with(density) { coordinates.positionInWindow().y.toDp() }
-                    },
-                    icon = Icons.Rounded.Palette,
-                    title = stringResource(R.string.material_color),
-                    description = stringResource(R.string.material_color_description),
-                    value = accentLabel(accentColor),
-                    position = SettingsCardPosition.Top,
-                    onClick = {
-                        clickHaptic(view)
-                        showColorDialog = true
-                    },
-                )
-                SettingsCard(
-                    modifier = Modifier.onGloballyPositioned { coordinates ->
-                        languageMenuTop = with(density) { coordinates.positionInWindow().y.toDp() }
-                    },
-                    icon = Icons.Rounded.Language,
-                    title = stringResource(R.string.language),
-                    description = stringResource(R.string.language_description),
-                    value = languageLabel(currentLanguageTag),
-                    position = SettingsCardPosition.Middle,
-                    onClick = {
-                        clickHaptic(view)
-                        showLanguageDialog = true
-                    },
-                )
-                SettingsSwitchCard(
-                    icon = Icons.Rounded.VerifiedUser,
-                    title = stringResource(R.string.shizuku_mode),
-                    description = stringResource(R.string.shizuku_mode_description),
-                    checked = shizukuMode,
-                    position = SettingsCardPosition.Bottom,
-                    onCheckedChange = { enabled ->
-                        clickHaptic(view)
-                        if (!enabled) {
-                            onShizukuModeChanged(false)
-                        } else {
-                            scope.launch {
-                                ShizukuController.pingUntilRunning()
-                                if (ShizukuController.isRunning()) {
-                                    onShizukuModeChanged(true)
-                                    if (!ShizukuController.isGranted()) {
-                                        ShizukuController.requestPermission()
-                                    }
-                                } else {
-                                    showShizukuMissingDialog = true
-                                }
-                            }
-                        }
-                    },
-                )
-            }
-        }
-        item { SectionLabel(stringResource(R.string.advanced)) }
-        item {
-            SettingsSwitchCard(
-                icon = Icons.Rounded.Memory,
-                title = stringResource(R.string.advanced_mode),
-                description = stringResource(R.string.advanced_mode_description),
-                checked = advancedMode,
-                onCheckedChange = {
-                    clickHaptic(view)
-                    onAdvancedModeChanged(it)
-                },
-            )
-			
-            SettingsSwitchCard(
-                icon = Icons.Rounded.Security,
-                title = stringResource(R.string.disable_ksu_modules),
-                description = stringResource(R.string.disable_ksu_modules_description),
-                checked = disableKsuModules,
-                position = SettingsCardPosition.Bottom,
-                onCheckedChange = {
-                    clickHaptic(view)
-                    onDisableKsuModulesChanged(it)
-                },
+            Text(
+                text = stringResource(R.string.nav_settings),
+                style = MaterialTheme.typography.headlineLarge,
             )
         }
-        item { SectionLabel(stringResource(R.string.about)) }
+
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                UpdateSettingsCard(
-                    status = updateStatus,
-                    position = SettingsCardPosition.Top,
-                    onCheckForUpdate = onCheckForUpdate,
-                    onStartDownload = onStartDownload,
-                )
-                SettingsCard(
-                    icon = Icons.Rounded.Info,
-                    title = stringResource(R.string.about),
-                    description = stringResource(R.string.about_description),
-                    value = "",
-                    position = SettingsCardPosition.Bottom,
-                    onClick = {
-                        clickHaptic(view)
-                        showAboutDialog = true
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun UpdateSettingsCard(
-    status: UpdateStatus,
-    position: SettingsCardPosition,
-    onCheckForUpdate: () -> Unit,
-    onStartDownload: (UpdateInfo) -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val view = LocalView.current
-    val busy = status.busy
-    Card(
-        onClick = {
-            clickHaptic(view)
-            when {
-                busy -> Unit
-                status is UpdateStatus.Available -> onStartDownload(status.info)
-                else -> onCheckForUpdate()
-            }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = expressiveClickableCardShape(interactionSource, position),
-        interactionSource = interactionSource,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            when {
-                status is UpdateStatus.Checking -> LoadingIndicator(modifier = Modifier.size(28.dp))
-                status is UpdateStatus.Downloading -> CircularProgressIndicator(
-                    progress = { status.progress },
-                    modifier = Modifier.size(28.dp),
-                )
-                else -> Icon(
-                    Icons.Rounded.SystemUpdate,
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = when (status) {
-                        is UpdateStatus.Available, is UpdateStatus.Downloading ->
-                            stringResource(R.string.updater_available_title)
-                        else -> stringResource(R.string.updater_check)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = when {
-                        status is UpdateStatus.Downloading -> stringResource(R.string.updater_downloading)
-                        status is UpdateStatus.Checking -> stringResource(R.string.updater_checking)
-                        status is UpdateStatus.Available ->
-                            stringResource(R.string.updater_available_body_short, status.info.versionName)
-                        status is UpdateStatus.UpToDate -> stringResource(R.string.updater_up_to_date)
-                        status is UpdateStatus.Failed -> stringResource(R.string.updater_failed)
-                        else -> ""
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (status is UpdateStatus.Available) {
-                Text(
-                    text = stringResource(R.string.updater_button_download),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TargetSelectionSheet(
-    device: DeviceSnapshot,
-    catalog: TargetCatalogUiState,
-    onDismiss: () -> Unit,
-    onRetry: () -> Unit,
-    onNext: (TargetProfile) -> Unit,
-) {
-    var showOnlyMyDevice by remember { mutableStateOf(true) }
-    var selectedProfileId by remember { mutableStateOf<String?>(null) }
-    val view = LocalView.current
-    val visibleProfiles = remember(catalog.profiles, showOnlyMyDevice, device) {
-        if (showOnlyMyDevice) {
-            catalog.profiles.filter { it.matches(device) }
-        } else {
-            catalog.profiles
-        }
-    }
-    val selectedProfile = catalog.profiles.firstOrNull { it.profileId == selectedProfileId }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    stringResource(R.string.select_device_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    stringResource(R.string.select_device_description),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
+            Text(
+                text = stringResource(R.string.settings_theme_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .toggleable(
-                        value = showOnlyMyDevice,
-                        role = Role.Checkbox,
-                        onValueChange = { enabled ->
-                            clickHaptic(view)
-                            showOnlyMyDevice = enabled
-                            if (enabled && selectedProfile?.matches(device) == false) {
-                                selectedProfileId = null
-                            }
-                        },
-                    )
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Checkbox(checked = showOnlyMyDevice, onCheckedChange = null)
-                Text(stringResource(R.string.show_my_device_only), style = MaterialTheme.typography.titleMedium)
-            }
-
-            when {
-                catalog.loading -> Box(
-                    modifier = Modifier.fillMaxWidth().height(220.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    LoadingIndicator(color = MaterialTheme.colorScheme.onSurface)
-                }
-                catalog.error != null -> Column(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(catalog.error, color = MaterialTheme.colorScheme.error)
-                    FilledTonalButton(onClick = onRetry) {
-                        Text(stringResource(R.string.action_retry))
-                    }
-                }
-                visibleProfiles.isEmpty() -> Text(
-                    stringResource(R.string.no_matching_devices),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                else -> LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 480.dp)
-                        .selectableGroup(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(visibleProfiles, key = TargetProfile::profileId) { profile ->
-                        val selected = selectedProfileId == profile.profileId
-                        val matchingModel = profile.models.firstOrNull {
-                            it.equals(device.model, ignoreCase = true)
-                        }
-                        val modelLabel = matchingModel ?: profile.models.take(3).joinToString().let {
-                            if (profile.models.size > 3) "$it +${profile.models.size - 3}" else it
-                        }
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large,
-                            color = if (selected) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerHighest
-                            },
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .selectable(
-                                        selected = selected,
-                                        role = Role.RadioButton,
-                                        onClick = {
-                                            clickHaptic(view)
-                                            selectedProfileId = profile.profileId
-                                        },
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                RadioButton(selected = selected, onClick = null)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        profile.displayName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Text(
-                                        modelLabel,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                AppThemeMode.entries.forEach { mode ->
+                    FilledTonalButton(
+                        onClick = { onThemeModeChanged(mode) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(
+                            when (mode) {
+                                AppThemeMode.System -> R.string.theme_system
+                                AppThemeMode.Light -> R.string.theme_light
+                                AppThemeMode.Dark -> R.string.theme_dark
                             }
-                        }
+                        ))
                     }
                 }
             }
+        }
 
-            HorizontalDivider()
+        item {
+            Text(
+                text = stringResource(R.string.settings_accent_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AccentColor.entries.forEach { color ->
+                    FilledTonalButton(
+                        onClick = { onAccentColorChanged(color) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(color.name)
+                    }
+                }
+            }
+        }
+
+        item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                TextButton(onClick = {
-                    clickHaptic(view)
-                    onDismiss()
-                }, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-                Button(
-                    onClick = {
-                        clickHaptic(view)
-                        selectedProfile?.let(onNext)
-                    },
-                    enabled = selectedProfile != null,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.action_next))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 18.dp, top = 6.dp, bottom = 2.dp),
-    )
-}
-
-private enum class SettingsCardPosition {
-    Single,
-    GroupedSingle,
-    Top,
-    Middle,
-    Bottom,
-}
-
-@Composable
-private fun SettingsCard(
-    modifier: Modifier = Modifier,
-    icon: ImageVector,
-    title: String,
-    description: String,
-    value: String,
-    position: SettingsCardPosition = SettingsCardPosition.Single,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val view = LocalView.current
-    Card(
-        onClick = {
-            clickHaptic(view)
-            onClick()
-        },
-        modifier = modifier.fillMaxWidth(),
-        shape = expressiveClickableCardShape(interactionSource, position),
-        interactionSource = interactionSource,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = stringResource(R.string.settings_advanced_mode),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Switch(
+                    checked = advancedMode,
+                    onCheckedChange = onAdvancedModeChanged,
                 )
             }
-            Text(
-                value,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-            )
         }
-    }
-}
 
-@Composable
-private fun SettingsSwitchCard(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    checked: Boolean,
-    position: SettingsCardPosition = SettingsCardPosition.Single,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val view = LocalView.current
-    Card(
-        onClick = {
-            clickHaptic(view)
-            onCheckedChange(!checked)
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = expressiveClickableCardShape(interactionSource, position),
-        interactionSource = interactionSource,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
                 Text(
-                    description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = stringResource(R.string.settings_disable_ksu_modules),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Switch(
+                    checked = disableKsuModules,
+                    onCheckedChange = onDisableKsuModulesChanged,
                 )
             }
-            Switch(checked = checked, onCheckedChange = null)
         }
-    }
-}
 
-@Composable
-private fun ThemeModeSelector(
-    themeMode: AppThemeMode,
-    onThemeModeChanged: (AppThemeMode) -> Unit,
-) {
-    val view = LocalView.current
-    val themeModes = AppThemeMode.entries
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-    ) {
-        themeModes.forEachIndexed { index, mode ->
-            ToggleButton(
-                checked = themeMode == mode,
-                onCheckedChange = {
-                    clickHaptic(view)
-                    onThemeModeChanged(mode)
-                },
-                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
-                colors = ToggleButtonDefaults.toggleButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                ),
-                shapes = when (index) {
-                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                    themeModes.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                },
-                contentPadding = PaddingValues(horizontal = 10.dp),
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Icon(
-                    imageVector = when (mode) {
-                        AppThemeMode.System -> Icons.Rounded.BrightnessAuto
-                        AppThemeMode.Light -> Icons.Rounded.LightMode
-                        AppThemeMode.Dark -> Icons.Rounded.DarkMode
-                    },
-                    contentDescription = null,
+                Text(
+                    text = stringResource(R.string.settings_shizuku_mode),
+                    style = MaterialTheme.typography.titleMedium,
                 )
-                Spacer(Modifier.size(ToggleButtonDefaults.IconSpacing))
-                Text(themeModeLabel(mode), maxLines = 1)
+                Switch(
+                    checked = shizukuMode,
+                    onCheckedChange = onShizukuModeChanged,
+                )
             }
         }
-    }
-}
 
-@Composable
-private fun AboutDialog(onDismiss: () -> Unit) {
-    val uriHandler = LocalUriHandler.current
-    val view = LocalView.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            DialogDimAmount(0.34f)
-            Text(stringResource(R.string.about_title))
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(stringResource(R.string.about_body))
-                AppVersionText(
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                HorizontalDivider()
-                Surface(
-                    onClick = {
-                        clickHaptic(view)
-                        uriHandler.openUri(KERNEL_SU_HOME_URL)
-                    },
-                    color = Color.Transparent,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(painterResource(R.drawable.ic_kernelsu), contentDescription = null)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.kernelsu_card_title),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Text(
-                                stringResource(R.string.kernelsu_card_description),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Icon(Icons.Rounded.Link, contentDescription = stringResource(R.string.open_github))
-                    }
-                }
-                Surface(
-                    onClick = {
-                        clickHaptic(view)
-                        uriHandler.openUri(ROOT_MY_GALAXY_URL)
-                    },
-                    color = Color.Transparent,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(painterResource(R.drawable.ic_github), contentDescription = null)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.github_card_title),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Text(
-                                stringResource(R.string.github_card_description),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Icon(Icons.Rounded.Link, contentDescription = stringResource(R.string.open_github))
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                clickHaptic(view)
-                onDismiss()
-            }) {
-                Text(stringResource(R.string.action_close))
-            }
-        },
-    )
-}
-
-@Composable
-private fun expressiveClickableCardShape(
-    interactionSource: MutableInteractionSource,
-    position: SettingsCardPosition = SettingsCardPosition.Single,
-): RoundedCornerShape {
-    val pressed by interactionSource.collectIsPressedAsState()
-    val topRadius by animateDpAsState(
-        targetValue = when {
-            pressed -> 28.dp
-            position == SettingsCardPosition.Single -> 16.dp
-            position in setOf(SettingsCardPosition.GroupedSingle, SettingsCardPosition.Top) -> 24.dp
-            else -> 6.dp
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "clickable-card-top-corner",
-    )
-    val bottomRadius by animateDpAsState(
-        targetValue = when {
-            pressed -> 28.dp
-            position == SettingsCardPosition.Single -> 16.dp
-            position in setOf(SettingsCardPosition.GroupedSingle, SettingsCardPosition.Bottom) -> 24.dp
-            else -> 6.dp
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "clickable-card-bottom-corner",
-    )
-    return RoundedCornerShape(
-        topStart = topRadius,
-        topEnd = topRadius,
-        bottomStart = bottomRadius,
-        bottomEnd = bottomRadius,
-    )
-}
-
-@Composable
-private fun SideChoiceMenu(
-    choices: List<String>,
-    selectedIndex: Int,
-    topOffset: Dp,
-    onSelected: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var visible by remember { mutableStateOf(false) }
-    var closing by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-    val view = LocalView.current
-    val scrimAlpha by animateFloatAsState(
-        targetValue = if (visible) 0.34f else 0f,
-        animationSpec = tween(durationMillis = if (visible) 160 else 180),
-        label = "menu-scrim",
-    )
-
-    fun closeMenu(afterAnimation: () -> Unit) {
-        if (closing) return
-        closing = true
-        visible = false
-        coroutineScope.launch {
-            delay(MENU_EXIT_WAIT_MILLIS)
-            afterAnimation()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        visible = true
-    }
-
-    Popup(
-        onDismissRequest = { closeMenu(onDismiss) },
-        properties = PopupProperties(
-            focusable = true,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            clippingEnabled = false,
-        ),
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val estimatedHeight = 16.dp + 56.dp * choices.size
-            val constrainedTop = minOf(
-                topOffset,
-                maxHeight - estimatedHeight - 24.dp,
-            ).coerceAtLeast(16.dp)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = scrimAlpha))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { closeMenu(onDismiss) },
-                    ),
-            )
-            AnimatedVisibility(
-                visible = visible,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = constrainedTop, end = 18.dp),
-                enter = scaleIn(
-                    animationSpec = keyframes {
-                        durationMillis = 200
-                        1.025f at 95
-                        0.995f at 155
-                    },
-                    initialScale = 0.94f,
-                    transformOrigin = TransformOrigin(1f, 0f),
-                ),
-                exit = scaleOut(
-                    animationSpec = tween(durationMillis = MENU_EXIT_ANIMATION_MILLIS),
-                    targetScale = 0.86f,
-                    transformOrigin = TransformOrigin(1f, 0.5f),
-                ) + fadeOut(
-                    animationSpec = tween(
-                        durationMillis = 160,
-                        delayMillis = 20,
-                    ),
-                ),
+        item {
+            FilledTonalButton(
+                onClick = onCheckForUpdate,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Surface(
-                    modifier = Modifier
-                        .width(196.dp)
-                        .heightIn(max = 620.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                        ),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp,
-                ) {
-                    LazyColumn(
-                        contentPadding = PaddingValues(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        itemsIndexed(choices) { index, choice ->
-                            val selected = index == selectedIndex
-                            Surface(
-                                onClick = {
-                                    clickHaptic(view)
-                                    closeMenu { onSelected(index) }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = if (selected) {
-                                    MaterialTheme.shapes.extraLarge
-                                } else {
-                                    MaterialTheme.shapes.medium
-                                },
-                                color = if (selected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    Color.Transparent
-                                },
-                                contentColor = if (selected) {
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    if (selected) {
-                                        Icon(
-                                            Icons.Rounded.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                    }
-                                    Text(
-                                        text = choice,
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        maxLines = 1,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                Text(stringResource(R.string.settings_check_update))
             }
         }
     }
-}
-
-private const val MENU_EXIT_ANIMATION_MILLIS = 180
-private const val MENU_EXIT_WAIT_MILLIS = 200L
-
-@Composable
-private fun languageLabel(tag: String): String =
-    languageOptions.firstOrNull { languageMatches(it, tag) }
-        ?.let { stringResource(it.label) }
-        ?: stringResource(R.string.language_system)
-
-private fun languageMatches(option: LanguageOption, currentTag: String): Boolean {
-    if (option.tag.isEmpty()) return currentTag.isEmpty()
-    return currentTag == option.tag || currentTag.startsWith("$option.tag-")
-}
-
-@Composable
-private fun accentLabel(color: AccentColor): String = when (color) {
-    AccentColor.Dynamic -> stringResource(R.string.color_dynamic)
-    AccentColor.Blue -> stringResource(R.string.color_blue)
-    AccentColor.Violet -> stringResource(R.string.color_violet)
-    AccentColor.Green -> stringResource(R.string.color_green)
-    AccentColor.Orange -> stringResource(R.string.color_orange)
-}
-
-@Composable
-private fun themeModeLabel(themeMode: AppThemeMode): String = when (themeMode) {
-    AppThemeMode.System -> stringResource(R.string.theme_system)
-    AppThemeMode.Light -> stringResource(R.string.theme_light)
-    AppThemeMode.Dark -> stringResource(R.string.theme_dark)
 }
